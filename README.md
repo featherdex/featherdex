@@ -22,6 +22,10 @@ Alternatively, in `feathercoin.conf`, add the line
 
 ```experimental-btc-balances=1```
 
+## Known Bugs
+
+There have been some reports of very high memory usage on a first run. I am investigating.
+
 ## How to Build
 
 Must have Node.js, preferably v14 LTS. Run:
