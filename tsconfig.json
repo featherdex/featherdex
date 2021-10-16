@@ -1,0 +1,14 @@
+{
+	"compilerOptions": {
+		"outDir": "./build/",
+		"sourceMap": true,
+		"noImplicitAny": true,
+		"declaration": true,
+		"esModuleInterop": true,
+		"module": "commonjs",
+		"target": "es2020",
+		"jsx": "react",
+		"allowJs": true,
+		"typeRoots" : ["./node_modules/@types", "./src/types"]
+    }
+}

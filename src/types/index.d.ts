@@ -1,0 +1,408 @@
+/**
+ * From https://github.com/microsoft/TypeScript/blob/feac9eb126e56837d16acb61cd019ce8520db76c/src/lib/es5.d.ts#L1492-L1501
+ * TODO Remove when TypeScript 4.5 is stable!
+ * Recursively unwraps the "awaited type" of a type. Non-promise "thenables" should resolve to `never`. This emulates the behavior of `await`.
+ */
+type Awaited<T> =
+	T extends null | undefined ? T : // special case for `null | undefined` when not in `--strictNullChecks` mode
+	T extends object & { then(onfulfilled: infer F): any } ? // `await` only unwraps object types with a callable `then`. Non-object types are not unwrapped
+	F extends ((value: infer V) => any) ? // if the argument to `then` is callable, extracts the argument
+	Awaited<V> : // recursively unwrap the value
+	never : // the argument to `then` was not callable
+	T; // non-object or non-thenable
+
+declare type Undefined<N, T, V> = N extends undefined ? T : V;
+
+declare interface Cancellable {
+	isCancel: boolean,
+}
+
+declare interface Stringable {
+	toString: () => string,
+}
+
+declare type Settings = Record<string, any>;
+declare type RPCSettings = Record<string, any>;
+
+declare type Property = {
+	id: number,
+	name: string,
+};
+
+declare type PropertyList = Property[];
+
+declare type BittrexBookEntry = {
+	quantity: string,
+	rate: string,
+	orders?: number,
+};
+
+declare type BittrexBook = {
+	bid: BittrexBookEntry[],
+	ask: BittrexBookEntry[],
+};
+
+declare type AssetBalance = {
+	propertyid: number,
+	name: string,
+	balance: string,
+	reserved: string,
+	frozen: string,
+};
+
+declare type AssetTrade = {
+	time: import('lightweight-charts').UTCTimestamp,
+	txid: string,
+	block: number,
+	status: string,
+	idBuy: number,
+	idSell: number,
+	quantity: number,
+	remaining: number,
+	amount: number,
+	fee: number,
+	address?: string,
+};
+
+declare type DexSell = {
+	txid: string,
+	propertyid: string,
+	seller: string,
+	amountavailable: string,
+	feathercoindesired: string,
+	unitprice: string,
+	timelimit: number,
+	minimumfee: string,
+	amountaccepted: string,
+	accepts: any[],
+};
+
+declare type DexAccept = OmniTx & {
+	referenceaddress: string,
+	propertyid: number,
+	divisible: boolean,
+	amount: string,
+};
+
+declare type DexOrder = OmniTx & {
+	propertyid: number,
+	divisible: boolean,
+	amount: string,
+	feathercoindesired: string,
+	timelimit: number,
+	feerequired: string,
+	action: "new" | "update" | "cancel",
+};
+
+declare type DexPurchase = OmniTx & {
+	purchases: Purchase[],
+};
+
+declare type Purchase = {
+	vout: number,
+	amountpaid: string,
+	ismine: boolean,
+	referenceaddress: string,
+	propertyid: number,
+	amountbought: string,
+	valid: boolean,
+}
+
+declare type RawTxBlueprint = {
+	ins: { txid: string, vout: number, sequence?: number }[],
+	outs: ({ [address: string]: number } | { data: string })[],
+};
+
+declare type RawTx = {
+	in_active_chain?: boolean,
+	hex?: string,
+	txid: string,
+	hash: string,
+	size: number,
+	vsize: number,
+	weight: number,
+	version: number,
+	locktime: number,
+	vin: {
+		txid: string,
+		vout: number,
+		scriptSig: {
+			asm: string,
+			hex: string,
+		},
+		sequence: number,
+		txinwitness: string[],
+	}[],
+	vout: {
+		value: number,
+		n: number,
+		scriptPubKey: {
+			asm: string,
+			hex: string,
+			reqSigs: number,
+			type: string,
+			addresses: string[],
+		},
+	}[],
+	blockhash?: string,
+	confirmations?: number,
+	blocktime?: number,
+	time?: number,
+};
+
+declare type OmniTx = {
+	txid: string,
+	sendingaddress: string,
+	referenceaddress?: string,
+	ismine: boolean,
+	fee: string,
+	version: number,
+	type_int: number,
+	type: string,
+	valid: boolean,
+	confirmations: number,
+};
+
+declare type BlockInfo = {
+	blockhash: string,
+	blocktime: number,
+	positioninblock: number,
+	block: number,
+}
+
+declare type Tx = {
+	amount: number,
+	fee: number,
+	confirmations: number,
+	blockhash: string,
+	blockindex: number,
+	blocktime: number,
+	txid: string,
+	time: number,
+	timereceived: number,
+	"bip125-replaceable": string,
+	details: {
+		address?: string,
+		category: "send" | "receive" | "generate" | "immature" | "orphan",
+		amount: number,
+		label?: string,
+		vout: number,
+		fee: number,
+		abandoned?: boolean,
+	}[],
+	hex: string,
+};
+
+declare type BookData = {
+	price: number,
+	quantity: number,
+	value: number,
+	total: number,
+};
+
+declare type FundRawOptions = {
+	changeAddress?: string,
+	changePosition?: number,
+	change_type?: string,
+	includeWatching?: boolean,
+	lockUnspents?: boolean,
+	feeRate?: number | string,
+	subtractFeeFromOutputs?: number[],
+	replaceable?: boolean,
+	conf_target?: number,
+	estimate_mode?: "UNSET" | "ECONOMICAL" | "CONSERVATIVE",
+};
+
+declare type RequestOptions = {
+	method: "GET" | "POST" | "DELETE",
+	headers: Record<string, any>,
+	body?: string,
+};
+
+declare type BittrexErrorType = {
+	code: string,
+	detail: string,
+	data: object,
+};
+
+declare type BittrexBalance = {
+	currencySymbol: string,
+	total: string,
+	available: string,
+	updatedAt: string,
+};
+
+declare type BittrexTicker = {
+	symbol: string,
+	lastTradeRate: string,
+	bidRate: string,
+	askRate: string,
+};
+
+declare type BittrexSummary = {
+	symbol: string,
+	high: string,
+	low: string,
+	volume: string,
+	quoteVolume: string,
+	percentChange: string,
+	updatedAt: string,
+}
+
+declare type BittrexNewOrder = {
+	marketSymbol: string,
+	direction: "BUY" | "SELL",
+	type: "LIMIT" | "MARKET" | "CEILING_LIMIT" | "CEILING_MARKET",
+	timeInForce: "GOOD_TIL_CANCELLED" | "IMMEDIATE_OR_CANCEL" | "FILL_OR_KILL"
+	| "POST_ONLY_GOOD_TIL_CANCELLED" | "BUY_NOW" | "INSTANT",
+	quantity?: string,
+	ceiling?: string,
+	limit?: string,
+	clientOrderId?: string,
+	useAwards?: boolean,
+};
+
+declare type BittrexOrder = {
+	id: string,
+	marketSymbol: string,
+	direction: "BUY" | "SELL",
+	type: "LIMIT" | "MARKET" | "CEILING_LIMIT" | "CEILING_MARKET",
+	timeInForce: "GOOD_TIL_CANCELLED" | "IMMEDIATE_OR_CANCEL" | "FILL_OR_KILL"
+	| "POST_ONLY_GOOD_TIL_CANCELLED" | "BUY_NOW" | "INSTANT",
+	fillQuantity: string,
+	commission: string,
+	proceeds: string,
+	status: "OPEN" | "CLOSED",
+	createdAt: string,
+	quantity?: string,
+	limit?: string,
+	ceiling?: string,
+	clientOrderId?: string,
+	updatedAt?: string,
+	closedAt?: string,
+	orderToCancel?: {
+		type: string,
+		id: string
+	}
+};
+
+declare type BittrexCandle = {
+	startsAt: string,
+	open: string,
+	high: string,
+	low: string,
+	close: string,
+	volume: string,
+	quoteVolume: string,
+};
+
+declare type CoinbaseRate = {
+	data: {
+		currency: string,
+		rates: Record<string, string>,
+	}
+};
+
+declare type AddressUTXO = {
+	address: string,
+	txid: string,
+	height: number,
+	outputIndex: number,
+	script: string,
+	satoshis: number,
+};
+
+declare type UTXO = {
+	txid: string,
+	vout: number,
+	address: string,
+	label: string,
+	redeemScript: string,
+	scriptPubKey: string,
+	amount: number,
+	confirmations: number,
+	spendable: boolean,
+	solvable: boolean,
+	desc: string,
+	safe: boolean,
+};
+
+declare type AddressBalance = {
+	address: string,
+	balances: {
+		propertyid: number,
+		name: string,
+		balance: string,
+		reserved: string,
+		frozen: string,
+	}[],
+};
+
+declare type AssetInfo = {
+	propertyid: number,
+	name: string,
+	category: string,
+	subcategory: string,
+	data: string,
+	url: string,
+	divisible: boolean,
+	issuer: string,
+	creationtxid: string,
+	fixedissuance: boolean,
+	managedissuance: boolean,
+	"non-fungibletoken": boolean,
+	freezingenabled?: boolean,
+	totaltokens?: string
+};
+
+declare type NFTInfo = {
+	index: number,
+	owner: string,
+	grantdata: string,
+	issuerdata: string,
+	holderdata: string,
+};
+
+declare type BlockchainInfo = {
+	chain: string,
+	blocks: number,
+	headers: number,
+	bestblockhash: string,
+	difficulty: number,
+	mediantime: number,
+	verificationprogress: number,
+	initialblockdownload?: boolean,
+	chainwork: string,
+	size_on_disk: number,
+	pruned: boolean,
+	pruneheight: number,
+	automatic_pruning: boolean,
+	prune_target_size: number,
+	softforks: {
+		id: string,
+		version: number,
+		reject: { status: boolean },
+	}[],
+	bip9_softforks: {
+		[name: string]: {
+			status: string,
+			bit: number,
+			startTime: number,
+			timeout: number,
+			since: number,
+			statistics: {
+				period: number,
+				threshold: number,
+				elapsed: number,
+				count: number,
+				possible: boolean,
+			}
+		}
+	}
+};
+
+declare type FeeEstimate = {
+	feerate?: number,
+	errors?: string[],
+	blocks: number,
+};
