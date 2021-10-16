@@ -21,7 +21,6 @@
 			"package.json",
 			"package-lock.json"
 		],
-		"targets": ["zip", "nsis"],
 		"icon": "./img/icon-256px.ico"
 	},
 	"scripts": {
