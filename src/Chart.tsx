@@ -25,7 +25,7 @@ import {
 } from './util';
 
 const Chart = () => {
-	const { client } = React.useContext(AppContext);
+	const { client, blockTimes, addBlockTime } = React.useContext(AppContext);
 
 	const [idBuy, setIDBuy] = React.useState(-1);
 	const [idSell, setIDSell] = React.useState(-1);
@@ -39,8 +39,8 @@ const Chart = () => {
 	const [resizeListener, size] = useResizeAware();
 
 	const tradesCache = useTimeCache((ts, te) => !!client ?
-		api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp) : null,
-		t => t.time);
+		api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp,
+			{ cache: blockTimes, push: addBlockTime }) : null, t => t.time);
 
 	const uid = React.useMemo(() => uniqueId("chart-"), []);
 

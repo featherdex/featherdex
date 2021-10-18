@@ -2,3 +2,5 @@ build
 dist
 node_modules
 featherdex.log
+
+out/

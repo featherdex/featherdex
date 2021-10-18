@@ -54,7 +54,7 @@ export default function About({ isOpen, closeModalCallback }: AboutProps) {
 						OF SUCH DAMAGE.
 					</p>
 					<p>
-						Built with Node.js and node-webkit
+						Built with Node.js and Electron
 					</p>
 				</div>
 			</div>

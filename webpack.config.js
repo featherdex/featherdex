@@ -1,6 +1,26 @@
 const path = require('path');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
 
-module.exports = {
+module.exports = [{ // Electron entry
+	entry: './src/index.ts',
+	output: {
+		path: path.resolve(__dirname, 'build'),
+		filename: 'index.js'
+	},
+	resolve: {
+		extensions: ['.ts', '.tsx', '.js']
+	},
+	target: 'electron-main',
+	module: {
+		rules: [
+			{
+				test: /\.tsx?$/,
+				use: 'ts-loader'
+			},
+		]
+	}
+},
+{ // React entry
 	entry: ['./src/app.tsx'],
 	output: {
 		path: path.resolve(__dirname, 'build'),
@@ -9,7 +29,8 @@ module.exports = {
 	resolve: {
 		extensions: ['.ts', '.tsx', '.js']
 	},
-	target: "node-webkit",
+	target: 'electron-renderer',
+	devtool: 'eval-source-map',
 	module: {
 		rules: [
 			{
@@ -29,6 +50,10 @@ module.exports = {
 		]
 	},
 	externals: {
+		'dtrace-provider': 'commonjs2 dtrace-provider',
 		'node-fetch': 'commonjs2 node-fetch',
 	},
-};
+	plugins: [new HtmlWebpackPlugin({
+		template: 'src/index.html',
+	})],
+}];

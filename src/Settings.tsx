@@ -10,15 +10,12 @@ import './app.css';
 
 type SettingsProps = {
 	isOpen: boolean,
-	setSettingsCallback: (s: Record<string, any>) => void,
 	closeModalCallback: () => void,
-	saveModalCallback: () => void,
 };
 
-export default function Settings({ isOpen,
-	setSettingsCallback, closeModalCallback, saveModalCallback }
+export default function Settings({ isOpen, closeModalCallback }
 	: SettingsProps) {
-	const { settings } = React.useContext(AppContext);
+	const { settings, setSettings, saveSettings } = React.useContext(AppContext);
 
 	const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const target = event.target;
@@ -37,7 +34,7 @@ export default function Settings({ isOpen,
 		if (name === "dconf")
 			name = "dconfpath";
 
-		setSettingsCallback({ [name]: value });
+		setSettings({ [name]: value });
 	}
 
 	return <div>
@@ -105,9 +102,9 @@ export default function Settings({ isOpen,
 				</div>
 			</div>
 			<div className="ok-cancel">
-				<button onClick={saveModalCallback}>Apply</button>
+				<button onClick={saveSettings}>Apply</button>
 				<button onClick={() => {
-					saveModalCallback();
+					saveSettings();
 					closeModalCallback();
 				}}>Apply and close</button>
 				<button onClick={closeModalCallback}>Cancel</button>

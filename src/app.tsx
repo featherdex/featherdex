@@ -6,8 +6,11 @@ import ReactDOM from 'react-dom';
 import Terminal from 'terminal-in-react';
 import Client from 'bitcoin-core';
 import ReactNotification from 'react-notifications-component';
-import process from 'process';
+import createRBTree from 'functional-red-black-tree';
+import path from 'path';
 
+import { ipcRenderer } from 'electron';
+import { Tree } from 'functional-red-black-tree';
 import { Layout, Model, TabNode } from 'flexlayout-react';
 
 import api from './api';
@@ -25,16 +28,15 @@ import AppContext from './contexts/AppContext';
 
 import { PROPID_BITCOIN, PROPID_FEATHERCOIN } from './constants';
 
+import { writeLayout, createWindow } from './util';
 import {
-	repeatAsync, cleanup, readLayout, readSettings, writeSettings, readRPCConf,
+	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf,
 	isNumber, isBoolean, parseBoolean, handleError
 } from './util';
 
 import 'react-notifications-component/dist/theme.css'
 import 'flexlayout-react/style/dark.css';
 import './app.css';
-
-const nw = require('nw.gui');
 
 type AppProps = {
 	model: Model,
@@ -46,11 +48,17 @@ export type AppState = {
 	layoutRef: React.RefObject<Layout>,
 	layout: Model,
 	settings: Settings,
+	setSettings: (s: Record<string, any>) => void,
+	saveSettings: () => void,
 	assetList: PropertyList,
 	client: typeof Client,
 	sOpen: boolean,
 	aOpen: boolean,
 	pendingOrders: Order[],
+	addPendingOrder: (o: Order) => void,
+	clearStaleOrders: () => void,
+	blockTimes: Tree<number, number>,
+	addBlockTime: (time: number, height: number) => void,
 };
 
 class App extends React.Component<AppProps, AppState> {
@@ -60,35 +68,41 @@ class App extends React.Component<AppProps, AppState> {
 	constructor(props: AppProps) {
 		super(props);
 
-		const initSettings = this.props.initSettings;
-		const initRPCSettings = this.props.initRPCSettings;
+		const iSettings = this.props.initSettings;
+		const iRPCSettings = this.props.initRPCSettings;
 
 		let client = new Client({
-			host: initRPCSettings.rpchost,
-			port: initRPCSettings.rpcport,
-			username: initRPCSettings.rpcuser,
-			password: initRPCSettings.rpcpassword,
+			host: iRPCSettings.rpchost,
+			port: iRPCSettings.rpcport,
+			username: iRPCSettings.rpcuser,
+			password: iRPCSettings.rpcpassword,
 		});
 
-		const API = api(client);
-
-		API.isDaemonUp().then((v: boolean) => {
-			if (!v)
+		api(client).isDaemonUp().then((v: boolean) => {
+			if (!v) {
 				alert("Could not establish connection to omnifeather daemon, "
 					+ "please make sure it is running and that the Feathercoin "
 					+ "config path in this app's settings is correct");
-		})
+				this.openSettings();
+			}
+		});
 
 		this.state = {
 			layoutRef: React.createRef(),
 			layout: this.props.model,
-			settings: initSettings,
+			settings: iSettings,
+			setSettings: this.setSettings,
+			saveSettings: this.saveSettings,
 			assetList: [],
 			client: client,
 			sOpen: false,
 			aOpen: false,
 			pendingOrders: [],
-		}
+			addPendingOrder: this.addPendingOrder,
+			clearStaleOrders: this.clearStaleOrders,
+			blockTimes: createRBTree<number, number>(),
+			addBlockTime: this.addBlockTime,
+		};
 
 		this.genAssetList();
 		this.genAsset = setInterval(this.genAssetList, 60 * 1000);
@@ -99,17 +113,17 @@ class App extends React.Component<AppProps, AppState> {
 		clearInterval(this.genAsset);
 	}
 
-	addPendingOrder = (order: Order) => {
-		const orders = Array.from(this.state.pendingOrders);
-		orders.push(order);
-		this.setState({ pendingOrders: orders });
-	}
+	addBlockTime = (time: number, height: number) =>
+		this.setState(oldState =>
+			({ blockTimes: oldState.blockTimes.insert(time, height) }));
 
-	clearStaleOrders = () => {
-		const orders = this.state.pendingOrders.filter(o => !o.isDone);
-		if (orders.length != this.state.pendingOrders.length)
-			this.setState({ pendingOrders: orders });
-	}
+	addPendingOrder = (order: Order) =>
+		this.setState(oldState =>
+			({ pendingOrders: [...oldState.pendingOrders, order] }));
+
+	clearStaleOrders = () =>
+		this.setState(oldState =>
+			({ pendingOrders: oldState.pendingOrders.filter(o => !o.isDone) }));
 
 	genAssetList = () => {
 		let proplist = [{
@@ -204,7 +218,7 @@ class App extends React.Component<AppProps, AppState> {
 				startState="maximised"
 			/>);
 		else if (component === "trade")
-			return panel(<Trade addPendingCallback={this.addPendingOrder} />,
+			return panel(<Trade />,
 				{ minWidth: "935px", overflow: "auto" });
 		else if (component === "orders")
 			return panel(<Orders />);
@@ -246,9 +260,7 @@ class App extends React.Component<AppProps, AppState> {
 				factory={this.factory} />
 			<Settings
 				isOpen={this.state.sOpen}
-				setSettingsCallback={this.setSettings}
-				closeModalCallback={this.closeSettings}
-				saveModalCallback={this.saveSettings} />
+				closeModalCallback={this.closeSettings} />
 			<About
 				isOpen={this.state.aOpen}
 				closeModalCallback={this.closeAbout} />
@@ -256,111 +268,47 @@ class App extends React.Component<AppProps, AppState> {
 	}
 }
 
-(async function() {
+export const appRef = React.createRef<App>();
+
+export const addTab = (title: string, component: string) => {
+	let layoutRef = appRef.current.state.layoutRef;
+	if (layoutRef && layoutRef.current)
+		layoutRef.current.addTabToActiveTabSet({
+			type: "tab",
+			name: title,
+			component: component,
+		});
+}
+
+(async () => {
 	let initSettings = await readSettings();
 	let rpcSettings = await readRPCConf(initSettings.dconfpath);
 	let initLayout = await readLayout();
 
 	let model = Model.fromJson(initLayout);
-	let appRef = React.createRef<App>();
-	let app = <>
+	let appComponent = <>
 		<App ref={appRef}
 			model={model} initSettings={initSettings}
 			initRPCSettings={rpcSettings} />
 		<ReactNotification />
 	</>;
-	let win = nw.Window.get();
-	const end = () => cleanup(appRef.current.state.layout);
 
-	const addTab = (title: string, component: string) => {
-		let layoutRef = appRef.current.state.layoutRef;
-		if (layoutRef && layoutRef.current)
-			layoutRef.current.addTabToActiveTabSet({
-				type: "tab",
-				name: title,
-				component: component,
+	ipcRenderer.on("open:settings", () => appRef.current.openSettings());
+	ipcRenderer.on("open:about", () => appRef.current.openAbout());
+	ipcRenderer.on("open:tab", (_, msg) => addTab(msg.title, msg.component));
+
+	window.onbeforeunload = (e: BeforeUnloadEvent) => {
+		createWindow(path.resolve("src", "shutdown.html"), 120, 60, false);
+		if (appRef.current && appRef.current.state.layout)
+			writeLayout(appRef.current.state.layout.toJson()).then(_ => {
+				ipcRenderer.send("app_quit");
+				window.onbeforeunload = null;
 			});
-	}
 
-	let themenu = new nw.Menu({ type: 'menubar' });
+		e.returnValue = false;
+	};
 
-	let filemenu = new nw.Menu();
-	filemenu.append(new nw.MenuItem({
-		label: 'Settings...',
-		click: () => appRef.current.openSettings(),
-	}));
-	filemenu.append(new nw.MenuItem({
-		label: 'Quit',
-		click: end,
-		key: "Q",
-		modifiers: process.platform === "darwin" ? "cmd+shift" : "ctrl+shift"
-	}));
+	Modal.setAppElement("#root");
 
-	let panelmenu = new nw.Menu();
-	panelmenu.append(new nw.MenuItem({
-		label: "Chart",
-		click: () => addTab("Chart", "chart"),
-	}));
-	panelmenu.append(new nw.MenuItem({
-		label: "Assets",
-		click: () => addTab("Assets", "assets"),
-	}));
-	panelmenu.append(new nw.MenuItem({
-		label: "Trade",
-		click: () => addTab("Trade", "trade"),
-	}));
-	panelmenu.append(new nw.MenuItem({
-		label: "Orders",
-		click: () => addTab("Orders", "orders"),
-	}));
-	panelmenu.append(new nw.MenuItem({
-		label: "History",
-		click: () => addTab("History", "history"),
-	}));
-	panelmenu.append(new nw.MenuItem({
-		label: "Info",
-		click: () => addTab("Info", "info"),
-	}));
-	panelmenu.append(new nw.MenuItem({
-		label: "Terminal",
-		click: () => addTab("Terminal", "terminal"),
-	}));
-	panelmenu.append(new nw.MenuItem({
-		label: "Ticker",
-		click: () => addTab("Ticker", "ticker"),
-	}));
-
-	let viewmenu = new nw.Menu();
-	viewmenu.append(new nw.MenuItem({
-		label: "New Panel",
-		submenu: panelmenu
-	}))
-
-	let aboutmenu = new nw.Menu();
-	aboutmenu.append(new nw.MenuItem({
-		label: 'About...',
-		click: () => appRef.current.openAbout(),
-	}));
-
-	themenu.append(new nw.MenuItem({
-		label: 'File',
-		submenu: filemenu,
-	}));
-
-	themenu.append(new nw.MenuItem({
-		label: 'View',
-		submenu: viewmenu,
-	}));
-
-	themenu.append(new nw.MenuItem({
-		label: 'Help',
-		submenu: aboutmenu,
-	}));
-
-	win.menu = themenu;
-	win.on('close', end);
-
-	Modal.setAppElement('#root');
-
-	ReactDOM.render(app, document.getElementById('root'));
+	ReactDOM.render(appComponent, document.getElementById("root"));
 })();

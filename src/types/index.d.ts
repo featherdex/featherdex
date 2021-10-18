@@ -3,7 +3,7 @@
  * TODO Remove when TypeScript 4.5 is stable!
  * Recursively unwraps the "awaited type" of a type. Non-promise "thenables" should resolve to `never`. This emulates the behavior of `await`.
  */
-type Awaited<T> =
+declare type Awaited<T> =
 	T extends null | undefined ? T : // special case for `null | undefined` when not in `--strictNullChecks` mode
 	T extends object & { then(onfulfilled: infer F): any } ? // `await` only unwraps object types with a callable `then`. Non-object types are not unwrapped
 	F extends ((value: infer V) => any) ? // if the argument to `then` is callable, extracts the argument
@@ -13,12 +13,23 @@ type Awaited<T> =
 
 declare type Undefined<N, T, V> = N extends undefined ? T : V;
 
+declare interface Window {
+	api: {
+		quit: () => void,
+	}
+}
+
 declare interface Cancellable {
 	isCancel: boolean,
 }
 
 declare interface Stringable {
 	toString: () => string,
+}
+
+declare type BlockTimeStruct = {
+	cache: import('functional-red-black-tree').Tree<number, number>,
+	push: (time: number, height: number) => void,
 }
 
 declare type Settings = Record<string, any>;
@@ -193,6 +204,26 @@ declare type Tx = {
 	hex: string,
 };
 
+declare type Block = {
+	hash: string,
+	confirmations: number,
+	strippedsize: number,
+	size: number,
+	weight: number,
+	height: number,
+	version: number,
+	versionHex: string,
+	merkleroot: string,
+	tx: string[],
+	time: number,
+	mediantime: number,
+	nonce: number,
+	bits: string,
+	difficulty: number,
+	nTx: number,
+	previousblockhash: string,
+};
+
 declare type BookData = {
 	price: number,
 	quantity: number,
@@ -301,15 +332,6 @@ declare type CoinbaseRate = {
 		currency: string,
 		rates: Record<string, string>,
 	}
-};
-
-declare type AddressUTXO = {
-	address: string,
-	txid: string,
-	height: number,
-	outputIndex: number,
-	script: string,
-	satoshis: number,
 };
 
 declare type UTXO = {

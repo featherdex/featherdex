@@ -133,31 +133,11 @@ const Orders = () => {
 		log.debug(`cancelFee=${cancelFee}`)
 
 		const utxos = await
-			handlePromise(repeatAsync(API.getAddressUTXOs, 3)(trade.address),
+			handlePromise(repeatAsync(API.listUnspent, 3)([trade.address]),
 				"Failed to get address utxos for cancel transaction");
 		if (utxos === null) return;
 
-		let utxo: UTXO;
-		for (let i of utxos) {
-			const amount = roundn(i.satoshis * SATOSHI, 8);
-			if (amount >= cancelFee + MIN_CHANGE) {
-				utxo = {
-					txid: i.txid,
-					vout: i.outputIndex,
-					address: i.address,
-					label: "", // unused
-					redeemScript: "", // unused
-					scriptPubKey: "", // unused
-					amount: amount,
-					confirmations: 0, // unused
-					spendable: true,
-					solvable: true,
-					desc: "", // unused
-					safe: true,
-				};
-				break;
-			}
-		}
+		let utxo = utxos.find(v => v.amount >= cancelFee + MIN_CHANGE);
 
 		// If there is not a sufficient UTXO we must make one
 		if (!utxo) {

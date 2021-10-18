@@ -45,8 +45,7 @@ export type TraderAction = {
 
 type TraderProps = {
 	state: TraderState,
-	dispatch: (v: TraderAction) => any,
-	addPendingCallback: (order: Order) => void,
+	dispatch: (v: TraderAction) => any
 }
 
 const reducerTrade =
@@ -143,8 +142,8 @@ const reducerTrade =
 		}
 	}
 
-const Trader = ({ state, dispatch, addPendingCallback }: TraderProps) => {
-	const { settings, client } = React.useContext(AppContext);
+const Trader = ({ state, dispatch }: TraderProps) => {
+	const { settings, client, addPendingOrder } = React.useContext(AppContext);
 
 	const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const target = event.target;
@@ -631,7 +630,7 @@ const Trader = ({ state, dispatch, addPendingCallback }: TraderProps) => {
 			utxo.address, state.isNoHighFees, waitTXs, finaltx);
 
 		log.debug("add pending order")
-		addPendingCallback(order);
+		addPendingOrder(order);
 
 		notify("success", "Created new order", toTradeInfo(order));
 
@@ -689,7 +688,7 @@ const Trader = ({ state, dispatch, addPendingCallback }: TraderProps) => {
 							minWidth: "120px",
 							padding: "0 8px 0 8px",
 							fontFamily: "monospace",
-							fontSize: "10pt",
+							fontSize: "9pt",
 							textAlign: "right",
 						}}>
 							{state.trade === 1 ?
@@ -798,11 +797,7 @@ const Trader = ({ state, dispatch, addPendingCallback }: TraderProps) => {
 	</>;
 };
 
-type TradeProps = {
-	addPendingCallback: (order: Order) => void,
-};
-
-const Trade = ({ addPendingCallback }: TradeProps) => {
+const Trade = () => {
 	const initialState: TraderState = {
 		trade: -1,
 		base: PROPID_FEATHERCOIN,
@@ -823,8 +818,7 @@ const Trade = ({ addPendingCallback }: TradeProps) => {
 
 	return <>
 		<div className="trader">
-			<Trader state={state} dispatch={dispatch}
-				addPendingCallback={addPendingCallback} />
+			<Trader state={state} dispatch={dispatch} />
 		</div>
 		<div className="orderbook">
 			<Orderbook state={state} dispatch={dispatch} />

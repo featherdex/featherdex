@@ -2,7 +2,6 @@
 
 import React from 'react';
 import Client from 'bitcoin-core';
-import type { Model } from 'flexlayout-react';
 import getAppDataPath from 'appdata-path';
 
 import { sum } from 'lodash';
@@ -25,7 +24,8 @@ import { defaultLayout, defaultRPCSettings, defaultSettings } from './defaults';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const nw = require('nw.gui');
+import { app, BrowserWindow, shell } from 'electron';
+
 export const log = require('simple-node-logger').createSimpleLogger({
 	logFilePath: 'featherdex.log',
 	timestampFormat: 'YYYY-MM-DD HH:mm:ss.SSS'
@@ -34,7 +34,6 @@ export const log = require('simple-node-logger').createSimpleLogger({
 log.setLevel('debug');
 
 let lastId = 0;
-let win = nw.Window.get();
 const rootPath = getAppDataPath(APP_NAME);
 
 export function uniqueId(prefix = 'id') {
@@ -715,20 +714,6 @@ export function waitForTx(client: typeof Client, tx: string, status?: Cancellabl
 	});
 }
 
-export function cleanup(layout: Model) {
-	win.hide();
-	nw.Window.open(path.resolve('src', 'shutdown.html'), {
-		kiosk: true,
-		width: 120,
-		height: 60,
-		position: 'center',
-		frame: false,
-	});
-	writeLayout(layout.toJson());
-	nw.App.closeAllWindows();
-	win.close(true);
-}
-
 export function handlePromise<T>(p: Promise<T>, errmsg: string): Promise<T>;
 export function handlePromise<T, V extends unknown>
 	(p: Promise<T>, errmsg: string, partThen: (v: T) => V): Promise<V>;
@@ -747,10 +732,12 @@ export function handlePromise<T, V extends unknown>
 }
 
 export function handleError(err: Error, level = "log") {
-	const flog = err.message === "ESOCKETTIMEOUT" ?
-		log.warn : (level === "fatal" ?
-			log.fatal : (level === "error" ?
-				log.error : (level === "warn" ? log.warn : log.info)));
+	if (err.message === "ESOCKETTIMEDOUT"
+		|| err.message === "no auth mechanism defined") level = "warn";
+
+	const flog = level === "fatal" ?
+		log.fatal : (level === "error" ?
+			log.error : (level === "warn" ? log.warn : log.info));
 
 	flog(`${err.name}: `, err.message);
 	flog(err.stack);
@@ -763,11 +750,24 @@ export function handleError(err: Error, level = "log") {
 	if (level === "error")
 		return;
 
-	nw.App.quit();
+	app.quit();
 }
 
+export function createWindow(page: string, width = 1280, height = 800,
+	frame = true) {
+	const win = new BrowserWindow({
+		width, height, frame, webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false,
+		},
+	});
+	win.loadFile(page);
+
+	return win;
+};
+
 export function openLink(url: string) {
-	nw.Shell.openExternal(url);
+	shell.openExternal(url);
 }
 
 export function notify(type: ReactNotificationOptions['type'],

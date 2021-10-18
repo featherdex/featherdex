@@ -30,13 +30,15 @@ type Data = {
 };
 
 const Assets = () => {
-	const { settings, client } = React.useContext(AppContext);
+	const {
+		settings, client, blockTimes, addBlockTime
+	} = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
 	const [lasts, setLasts] = React.useState<Record<number, number>>({});
 
 	const tradesCache = useTimeCache((ts, te) => !!client ?
-		api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp) : null,
-		t => t.time);
+		api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp,
+			{ cache: blockTimes, push: addBlockTime }) : null, t => t.time);
 
 	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
 		{

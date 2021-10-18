@@ -10,7 +10,8 @@ const Client = require('bitcoin-core');
 
 import {
 	COINBASE_API_ENDPOINT, BITTREX_API_ENDPOINT, COIN_MARKET, COIN_FEERATE,
-	MIN_ACCEPT_FEE, BLOCK_TIME, BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_FEATHERCOIN
+	MIN_ACCEPT_FEE, BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_FEATHERCOIN,
+	GENESIS_TIME
 } from './constants';
 
 import { roundn } from './util';
@@ -95,33 +96,54 @@ const api = (client: typeof Client) => {
 	API.getRawTransaction =
 		(txid: string, verbose?: boolean): Promise<string | RawTx> =>
 			client.command("getrawtransaction", txid, !!verbose);
-	API.getBlock = (blockhash: string) => client.command("getblock", blockhash);
-	API.getBlockHash = (height: number) =>
+	API.getBlock = async (blockhash: string, blockTimeStruct?: BlockTimeStruct):
+		Promise<Block> => {
+		const block: Block = await client.command("getblock", blockhash);
+		if (!!blockTimeStruct) blockTimeStruct.push(block.time, block.height);
+		return block;
+	}
+	API.getBlockHash = (height: number): Promise<string> =>
 		client.command("getblockhash", height);
-	API.getBlockHashes = (older: UTCTimestamp, newer: UTCTimestamp) =>
-		client.command("getblockhashes", newer, older)
 	API.getBlockchainInfo = (): Promise<BlockchainInfo> =>
 		client.command("getblockchaininfo");
 	API.estimateFee = (): Promise<number> =>
 		client.command("estimatesmartfee", BLOCK_WAIT).then((v: FeeEstimate) =>
 			v.feerate ? v.feerate : COIN_FEERATE);
 
-	API.getBlockNumber = async (time: UTCTimestamp) => {
-		let i = 3, blocks: string[], timeNext;
+	// Get the first block on or after a timestamp and return the height
+	API.getBlockNumber =
+		async (time: UTCTimestamp, blockTimeStruct?: BlockTimeStruct) => {
+			const height = (await API.getBlockchainInfo()).blocks;
 
-		if (time > DateTime.now().toSeconds())
-			return (await API.getBlockchainInfo()).blocks;
+			if (time >= DateTime.now().toSeconds())
+				return height;
+			if (time <= GENESIS_TIME) return 1;
 
-		do {
-			timeNext = (time + i * BLOCK_TIME) as UTCTimestamp;
-			blocks = await API.getBlockHashes(time, timeNext);
-		} while (blocks.length === 0 && timeNext <= DateTime.now().toSeconds());
+			let lower = 1, upper = height;
 
-		if (blocks.length === 0)
-			return (await API.getBlockchainInfo()).blocks;
+			// If we have times in the cache then update our range the best we can
+			if (!!blockTimeStruct) {
+				const lowerNode = blockTimeStruct.cache.le(time),
+					upperNode = blockTimeStruct.cache.ge(time);
 
-		return (await API.getBlock(blocks[0])).height;
-	};
+				if (lowerNode.valid) lower = lowerNode.value;
+				if (upperNode.valid) upper = upperNode.value;
+			}
+
+			if (lower === upper) return lower;
+
+			// Perform binary search
+			do {
+				const mid = Math.ceil((lower + upper) / 2);
+				const block = await API.getBlock(await API.getBlockHash(mid),
+					blockTimeStruct);
+
+				if (time < block.time) upper = mid - 1;
+				else lower = mid;
+			} while (lower !== upper);
+
+			return lower;
+		};
 
 	API.getCoinBook = (): Promise<BittrexBook> =>
 		fetch(`${BITTREX_API_ENDPOINT}/markets/${COIN_MARKET}/orderbook`)
@@ -170,10 +192,6 @@ const api = (client: typeof Client) => {
 				v as CoinbaseRate);
 
 	API.getCoinBalance = (): Promise<number> => client.command("getbalance");
-	API.getAddressBalance = (...addrs: string[]): Promise<Record<string, any>> =>
-		client.command("getaddressbalance", { addresses: addrs });
-	API.getAddressUTXOs = (...addrs: string[]): Promise<AddressUTXO[]> =>
-		client.command("getaddressutxos", { addresses: addrs });
 	API.getWalletAssets = (): Promise<AssetBalance[]> =>
 		client.command("omni_getwalletbalances");
 	API.getWalletAddressAssets = (): Promise<AddressBalance[]> =>
@@ -188,8 +206,8 @@ const api = (client: typeof Client) => {
 				...optArgParse("*", 99999, 0, startblock, endblock));
 	API.listAddressGroupings = (): Promise<any[][][]> =>
 		client.command("listaddressgroupings");
-	API.listUnspent = (filteraddr?: string): Promise<UTXO[]> =>
-		client.command("listunspent", 0, 9999999, filteraddr ? [filteraddr] : []);
+	API.listUnspent = (filteraddrs = [] as string[]): Promise<UTXO[]> =>
+		client.command("listunspent", 0, 9999999, filteraddrs);
 	API.getNewAddress = (label = ""): Promise<string> =>
 		client.command("getnewaddress", label, "legacy");
 	API.getExchangeSells = (): Promise<DexSell[]> =>
@@ -225,10 +243,11 @@ const api = (client: typeof Client) => {
 		return totalIn - totalOut;
 	};
 
-	API.listAssetTrades = async (start: UTCTimestamp, end: UTCTimestamp):
-		Promise<AssetTrade[]> => {
-		const [first, last] =
-			[await API.getBlockNumber(start), await API.getBlockNumber(end)];
+	API.listAssetTrades = async (start: UTCTimestamp, end: UTCTimestamp,
+		blockTimeStruct?: BlockTimeStruct): Promise<AssetTrade[]> => {
+		const [first, last] = [await API.getBlockNumber(start, blockTimeStruct),
+		await API.getBlockNumber(end, blockTimeStruct)];
+
 		const allTXids: string[] =
 			await client.command("omni_listblockstransactions", first, last);
 		const allOmniTXs: (OmniTx & BlockInfo)[] = await

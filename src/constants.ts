@@ -1,6 +1,6 @@
 "use strict";
 
-export const APP_NAME = "FeatherDeX";
+export const APP_NAME = "FeatherDeX Trader";
 export const LAYOUT_NAME = "layout.json";
 export const CONF_NAME = "config.json";
 export const FCONF_NAME = "feathercoin.conf";
@@ -11,7 +11,7 @@ export const IN_NUMF = "en-IN";
 export const FR_NUMF = "fr-FR";
 
 export const OMNI_VERSION = 1;
-export const VERSION_STRING = "v0.0.1a";
+export const VERSION_STRING = "v0.0.2a";
 export const ACCOUNT_LABEL = "featherdex";
 
 export const TYPE_SIMPLE_SEND = 0;
@@ -32,6 +32,7 @@ export const EURO_SYMBOL = "\u20ac";
 export const PROPID_BITCOIN = 0;
 export const PROPID_FEATHERCOIN = 1;
 
+export const GENESIS_TIME = 1366147060;
 export const OMNI_START_HEIGHT = 3454000;
 export const OMNI_START_TIME = 1607663639;
 export const SATOSHI = 0.00000001;
