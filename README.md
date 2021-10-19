@@ -6,13 +6,13 @@ This desktop application allows you to trade on the Omnifeather decentralized ex
 
 Before starting this application, make sure you run the Omnifeather client/wallet.
 
-If your wallet is not in a standard location, you will have to open the settings in the app and select the Omnifeather conf file (`feathercoin.conf`).
+If your wallet is not in a standard location, you will have to open the settings in the app and select the Omnifeather conf folder (where `feathercoin.conf` is located).
 
 Once you have started the client and it is up to date, you may start the application.
 
 ## How to Build
 
-Must have Node.js, preferably v14 LTS. Run:
+Must have Node.js, preferably v14 LTS. Must also have Typescript! Run:
 
 ```bash
 git clone https://github.com/featherdex/featherdex.git
