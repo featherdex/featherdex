@@ -4,7 +4,17 @@ This desktop application allows you to trade on the Omnifeather decentralized ex
 
 ## How to Use
 
-Before starting this application, make sure you run the Omnifeather client/wallet.
+Before starting this application, make sure you run the Omnifeather client/wallet with the config file options:
+
+```
+server=1
+listen=1
+daemon=1
+rpcallowip=127.0.0.1
+rpcport=8332
+rpcuser=[YOUR USERNAME]
+rpcpassword=[YOUR PASSWORD]
+```
 
 If your wallet is not in a standard location, you will have to open the settings in the app and select the Omnifeather conf file (`feathercoin.conf`).
 
