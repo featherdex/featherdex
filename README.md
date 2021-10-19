@@ -4,27 +4,11 @@ This desktop application allows you to trade on the Omnifeather decentralized ex
 
 ## How to Use
 
-Before starting this application, you must enable `-experimental-btc-balances=1` on the omnifeather client.
+Before starting this application, make sure you run the Omnifeather client/wallet.
 
-If you are running the daemon, use
+If your wallet is not in a standard location, you will have to open the settings in the app and select the Omnifeather conf file (`feathercoin.conf`).
 
-```bash
-omnifeatherd -experimental-btc-balances=1
-```
-
-If you are running the GUI, use
-
-```bash
-omnifeather-qt -experimental-btc-balances=1
-```
-
-Alternatively, in `feathercoin.conf`, add the line
-
-```experimental-btc-balances=1```
-
-## Known Bugs
-
-There have been some reports of very high memory usage on a first run. I am investigating.
+Once you have started the client and it is up to date, you may start the application.
 
 ## How to Build
 
