@@ -8,7 +8,8 @@
 	"config": {
 		"forge": {
 			"packagerConfig": {
-				"icon": "img/icon-256px"
+				"icon": "img/icon-256px",
+				"asar":true
 			},
 			"makers": [
 				{
@@ -42,7 +43,12 @@
 		"build": "webpack --mode production",
 		"package": "electron-forge package",
 		"premake": "rimraf ./out/*",
-		"make": "electron-forge make"
+		"make-win_32": "electron-forge make --arch=\"ia32\" --platform \"win32\"",
+		"make-win_64": "electron-forge make --arch=\"x64\" --platform \"win32\"",
+		"make-win": "npm run make-win_32 && npm run make-win_64",
+		"make-mac": "electron-forge make --platform \"darwin\"",
+		"make-linux": "electron-forge make --platform \"linux\"",
+		"make": "npm run make-win && npm run make-mac && npm run make-linux"
 	},
 	"dependencies": {
 		"appdata-path": "^1.0.0",
