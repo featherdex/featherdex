@@ -2,9 +2,13 @@
 
 This desktop application allows you to trade on the Omnifeather decentralized exchange that runs on the Feathercoin blockchain. For more information on Omnifeather, visit https://omnifeather.com/ or its GitHub site https://github.com/OmniLayer/omnifeather.
 
+You must have Omnifeather installed in order to use this application.
+
 ## How to Use
 
-Before starting this application, make sure you run the Omnifeather client/wallet with the config file options:
+Before starting this application, make sure you open up your `feathercoin.conf` to add the below options. This file should be located at `C:\Users\[you]\AppData\Roaming\Feathercoin\feathercoin.conf` on Windows and `~/.feathercoin/feathercoin.conf` on Linux. If you are running the GUI, an easy way to find this file is by opening Omnifeather, then clicking Settings -> Options... -> Open Configuration File.
+
+Make sure the config has the following options:
 
 ```
 server=1
@@ -15,6 +19,8 @@ rpcport=8332
 rpcuser=[YOUR USERNAME]
 rpcpassword=[YOUR PASSWORD]
 ```
+
+The `rpcuser` and `rpcpassword` must be set in order to run the app.
 
 If your wallet is not in a standard location, you will have to open the settings in the app and select the Omnifeather conf file (`feathercoin.conf`).
 
