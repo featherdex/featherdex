@@ -34,7 +34,7 @@ npm i
 npm run deliver
 ```
 
-The built binaries should be in `./dist/[PLATFORM]/`.
+The built binaries should be in `./out/make/[FORMAT]/[PLATFORM]/[ARCH]/`.
 
 ## Bug Reports
 
