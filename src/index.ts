@@ -1,5 +1,6 @@
 import {
-	ipcMain, app, BrowserWindow, Menu, MenuItemConstructorOptions
+	ipcMain, app, BrowserWindow, Menu, MenuItemConstructorOptions, dialog,
+	OpenDialogOptions
 } from 'electron';
 
 import { createWindow } from './util';
@@ -136,6 +137,11 @@ app.whenReady().then(() => {
 
 	const menu = Menu.buildFromTemplate(template);
 	Menu.setApplicationMenu(menu);
+
+	ipcMain.on("choose",
+		(_, data: { rcvChannel: string, opts: OpenDialogOptions }) =>
+			dialog.showOpenDialog(data.opts).then(v =>
+				win.webContents.send(data.rcvChannel, v)));
 });
 
 ipcMain.on("app_quit", () => {

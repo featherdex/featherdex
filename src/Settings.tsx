@@ -3,8 +3,11 @@
 import React from 'react';
 import Modal from 'react-modal';
 
+import { ipcRenderer, OpenDialogReturnValue } from 'electron';
+
 import AppContext from './contexts/AppContext';
-import { US_NUMF, EU_NUMF, IN_NUMF, FR_NUMF, FCONF_NAME } from './constants';
+
+import { US_NUMF, EU_NUMF, IN_NUMF, FR_NUMF } from './constants';
 
 import './app.css';
 
@@ -31,11 +34,13 @@ export default function Settings({ isOpen, closeModalCallback }
 						EU_NUMF :
 						(name === "numformat-in" ? IN_NUMF : FR_NUMF))];
 
-		if (name === "dconf")
-			name = "dconfpath";
-
 		setSettings({ [name]: value });
 	}
+
+	ipcRenderer.on("choose:conf", (_, data: OpenDialogReturnValue) => {
+		if (!data.canceled && data.filePaths.length === 1)
+			setSettings({ dconfpath: data.filePaths[0] });
+	});
 
 	return <div>
 		<Modal
@@ -61,8 +66,18 @@ export default function Settings({ isOpen, closeModalCallback }
 					<input type="text" className="dconfpath form-field"
 						name="dconfpath" value={settings.dconfpath} size={40}
 						onChange={handleChange} />
-					<input type="file" className="dconf" name="dconf"
-						onChange={handleChange} />
+					<button onClick={() => ipcRenderer.send("choose", {
+						rcvChannel: "choose:conf",
+						options: {
+							title: "Choose Config File...",
+							filters: [{
+								name: "Feathercoin Config Files",
+								extensions: ["conf"],
+							},
+							{ name: "All Files", extensions: ["*"] }],
+							properties: ["openFile"],
+						}
+					})}> Choose File</button>
 				</label>
 				<div>
 					<h3>Number display format</h3>
