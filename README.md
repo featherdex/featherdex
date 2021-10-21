@@ -24,7 +24,7 @@ The `rpcuser` and `rpcpassword` must be set in order to run the app.
 
 If your wallet is not in a standard location, you will have to open the settings in the app and select the Omnifeather conf file (`feathercoin.conf`).
 
-Once you have started the client and it is up to date, you may start the application.
+Once you have started the client and it is up to date, you may start the application. To use any trade functionality, you must unlock the wallet! If you're getting errors about not being able to sign or send transactions, it's most likely that your wallet has been locked.
 
 ## How to Build
 
