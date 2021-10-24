@@ -31,7 +31,7 @@ Once you have started the client and it is up to date, you may start the applica
 Must have Node.js, preferably v14 LTS. Must also have Typescript! Run:
 
 ```bash
-git clone https://github.com/featherdex/featherdex.git
+git clone --recurse-submodules https://github.com/featherdex/featherdex.git
 cd featherdex
 ```
 
