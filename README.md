@@ -35,6 +35,8 @@ git clone --recurse-submodules https://github.com/featherdex/featherdex.git
 cd featherdex
 ```
 
+Follow the build instructions for Omnifeather in the omnifeather folder at https://github.com/omnilayer/omnifeather. Then simply:
+
 ```bash
 npm i
 npm run deliver
