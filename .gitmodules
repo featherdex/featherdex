@@ -1,0 +1,3 @@
+[submodule "omnifeather"]
+	path = omnifeather
+	url = https://github.com/OmniLayer/omnifeather.git
