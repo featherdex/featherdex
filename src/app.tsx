@@ -7,6 +7,7 @@ import Terminal from 'terminal-in-react';
 import Client from 'bitcoin-core';
 import ReactNotification from 'react-notifications-component';
 import createRBTree from 'functional-red-black-tree';
+import isEqual from 'lodash/fp/isEqual';
 import path from 'path';
 
 import { ipcRenderer } from 'electron';
@@ -31,7 +32,7 @@ import { PROPID_BITCOIN, PROPID_FEATHERCOIN } from './constants';
 import { writeLayout, createWindow } from './util';
 import {
 	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf,
-	isNumber, isBoolean, parseBoolean, handleError
+	isNumber, isBoolean, parseBoolean, handleError, log
 } from './util';
 
 import 'react-notifications-component/dist/theme.css'
@@ -61,7 +62,7 @@ export type AppState = {
 	addBlockTime: (time: number, height: number) => void,
 };
 
-class App extends React.Component<AppProps, AppState> {
+class App extends React.PureComponent<AppProps, AppState> {
 	genAsset: ReturnType<typeof setTimeout>;
 	clearStale: ReturnType<typeof setTimeout>;
 
@@ -77,6 +78,11 @@ class App extends React.Component<AppProps, AppState> {
 			username: iRPCSettings.rpcuser,
 			password: iRPCSettings.rpcpassword,
 		});
+
+		log.debug(`host=${iRPCSettings.rpchost}`);
+		log.debug(`port=${iRPCSettings.rpcport}`);
+		log.debug(`username=${iRPCSettings.rpcuser}`)
+		log.debug(`password=${iRPCSettings.rpcpassword}`)
 
 		api(client).isDaemonUp().then((v: boolean) => {
 			if (!v) {
@@ -121,9 +127,13 @@ class App extends React.Component<AppProps, AppState> {
 		this.setState(oldState =>
 			({ pendingOrders: [...oldState.pendingOrders, order] }));
 
-	clearStaleOrders = () =>
-		this.setState(oldState =>
-			({ pendingOrders: oldState.pendingOrders.filter(o => !o.isDone) }));
+	clearStaleOrders = () => {
+		this.setState(oldState => {
+			const arr = oldState.pendingOrders.filter(o => !o.isDone);
+			if (arr.length !== oldState.pendingOrders.length)
+				return { pendingOrders: arr };
+		});
+	}
 
 	genAssetList = () => {
 		let proplist = [{
@@ -141,9 +151,10 @@ class App extends React.Component<AppProps, AppState> {
 		const API = api(this.state.client);
 
 		repeatAsync(API.listProperties, 3)().then(data =>
-			this.setState({
-				assetList: proplist.concat(data.slice(2).map(x =>
-					({ id: x.propertyid, name: `${x.propertyid}: ${x.name}` })))
+			this.setState(oldState => {
+				const arr = proplist.concat(data.slice(2).map(x =>
+					({ id: x.propertyid, name: `${x.propertyid}: ${x.name}` })));
+				if (!isEqual(arr, oldState.assetList)) return { assetList: arr };
 			}), e => {
 				handleError(e, "error");
 				return null;

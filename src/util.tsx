@@ -3,8 +3,8 @@
 import React from 'react';
 import Client from 'bitcoin-core';
 import getAppDataPath from 'appdata-path';
+import sum from 'lodash/fp/sum';
 
-import { sum } from 'lodash';
 import { Mutex } from 'async-mutex';
 import {
 	BarData, LineData, WhitespaceData, UTCTimestamp

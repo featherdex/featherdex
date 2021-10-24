@@ -1,7 +1,5 @@
 import React from 'react';
 
-import sum from 'lodash/fp/sum';
-
 import AppContext from './contexts/AppContext';
 
 import Order from './order';
