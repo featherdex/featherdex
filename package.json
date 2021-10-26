@@ -9,7 +9,7 @@
 		"forge": {
 			"packagerConfig": {
 				"icon": "img/icon-256px",
-				"asar":true
+				"asar": true
 			},
 			"makers": [
 				{
@@ -58,8 +58,10 @@
 		"electron-squirrel-startup": "^1.0.0",
 		"flexlayout-react": "^0.5.3",
 		"functional-red-black-tree": "^1.0.1",
+		"ini": "^2.0.0",
 		"lightweight-charts": "^3.6.1",
 		"luxon": "^2.0.2",
+		"node-7z": "^3.0.0",
 		"node-fetch": "^2.6.5",
 		"react": "^16.14.0",
 		"react-app-menu": "^1.0.11",
@@ -71,9 +73,11 @@
 		"react-table": "^7.7.0",
 		"simple-node-logger": "^21.8.12",
 		"split-string": "^6.1.0",
+		"tail": "^2.2.4",
 		"terminal-in-react": "^4.3.1",
 		"url-regex": "^5.0.0",
-		"use-interval": "^1.3.0"
+		"use-interval": "^1.3.0",
+		"webtorrent": "^1.5.7"
 	},
 	"devDependencies": {
 		"@electron-forge/cli": "^6.0.0-beta.61",
@@ -83,15 +87,19 @@
 		"@electron-forge/maker-zip": "^6.0.0-beta.61",
 		"@types/crypto-js": "^4.0.2",
 		"@types/functional-red-black-tree": "^1.0.1",
+		"@types/ini": "^1.3.31",
 		"@types/lodash": "^4.14.175",
 		"@types/luxon": "^2.0.5",
 		"@types/node": "^14.17.27",
+		"@types/node-7z": "^2.1.3",
 		"@types/node-fetch": "^2.5.12",
 		"@types/react": "^16.14.17",
 		"@types/react-dom": "^16.9.14",
 		"@types/react-modal": "^3.13.1",
 		"@types/react-notifications-component": "^3.1.1",
 		"@types/react-table": "^7.7.6",
+		"@types/tail": "^2.2.1",
+		"@types/webtorrent": "^0.109.2",
 		"css-loader": "^5.2.7",
 		"electron": "^15.2.0",
 		"html-webpack-plugin": "^5.4.0",

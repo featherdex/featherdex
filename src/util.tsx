@@ -131,24 +131,22 @@ export async function readRPCConf(file: string) {
 	const isConf = await exists(file, false);
 	if (!isConf) return defaultRPCSettings;
 
-	return fs.promises.readFile(file).then(
-		contents => {
-			var rpcSettings = { ...defaultRPCSettings };
-			for (var line of contents.toString().split("\n")) {
-				const eqI = line.indexOf("=");
-				if (eqI !== -1) {
-					const [key, value] =
-						[line.substr(0, eqI), line.substr(eqI + 1)];
-					if (rpcSettings.hasOwnProperty(key))
-						rpcSettings[key] = value;
-				}
+	return fs.promises.readFile(file).then(contents => {
+		var rpcSettings = { ...defaultRPCSettings };
+		for (var line of contents.toString().split("\n")) {
+			const eqI = line.indexOf("=");
+			if (eqI !== -1) {
+				const [key, value] = [line.substr(0, eqI), line.substr(eqI + 1)];
+				if (rpcSettings.hasOwnProperty(key))
+					rpcSettings[key] = value;
 			}
+		}
 
-			return rpcSettings;
-		}, err => {
-			alert(err);
-			return defaultRPCSettings;
-		});
+		return rpcSettings;
+	}, err => {
+		alert(err);
+		return defaultRPCSettings;
+	});
 }
 
 export function inverseOHLC(v: BarData): BarData {
