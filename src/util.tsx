@@ -3,6 +3,7 @@
 import React from 'react';
 import Client from 'bitcoin-core';
 import getAppDataPath from 'appdata-path';
+import ini from 'ini';
 import sum from 'lodash/fp/sum';
 
 import { Mutex } from 'async-mutex';
@@ -133,14 +134,12 @@ export async function readRPCConf(file: string) {
 
 	return fs.promises.readFile(file).then(contents => {
 		var rpcSettings = { ...defaultRPCSettings };
-		for (var line of contents.toString().split("\n")) {
-			const eqI = line.indexOf("=");
-			if (eqI !== -1) {
-				const [key, value] = [line.substr(0, eqI), line.substr(eqI + 1)];
-				if (rpcSettings.hasOwnProperty(key))
-					rpcSettings[key] = value;
-			}
-		}
+		const conf = ini.parse(contents.toString()) as Record<string, unknown>;
+		
+		Object.entries(conf).forEach(([k, v]) => {
+			if (rpcSettings.hasOwnProperty(k) && typeof v === "string")
+				rpcSettings[k] = v;
+		});
 
 		return rpcSettings;
 	}, err => {
