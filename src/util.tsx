@@ -20,7 +20,8 @@ import Order from './order';
 import {
 	APP_NAME, LAYOUT_NAME, CONF_NAME, SATOSHI, COIN_FEERATE, EXODUS_ADDRESS,
 	MAX_ACCEPT_FEE, EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE, OPRETURN_ACCEPT_VSIZE,
-	OPRETURN_SEND_VSIZE, OPRETURN_ORDER_VSIZE, MIN_CHANGE, EXODUS_CHANGE, OrderAction
+	OPRETURN_SEND_VSIZE, OPRETURN_ORDER_VSIZE, MIN_CHANGE, EXODUS_CHANGE,
+	ACCOUNT_LABEL, OrderAction
 } from './constants';
 import { defaultLayout, defaultRPCSettings, defaultSettings } from './defaults';
 
@@ -722,11 +723,24 @@ export function toUTXO(txid: string, vout: number, address: string, amount: numb
 	};;
 }
 
-export function fundTx(client: typeof Client, rawtx: string,
+export async function fundTx(client: typeof Client, rawtx: string,
 	options = {} as FundRawOptions, errmsg = "Could not fund raw transaction") {
 	log.debug(`fundtx ${rawtx}`)
-	return handlePromise(repeatAsync(api(client).fundRawTransaction, 3)
-		(rawtx, options), errmsg, v => v.hex);
+	const API = api(client);
+
+	let opts = { ...options };
+	if (opts.changeAddress === undefined) {
+		const address = await handlePromise(repeatAsync(API.getNewAddress, 5)
+			(ACCOUNT_LABEL), `${errmsg} (getnewaddress)`);
+		if (address === null) return null;
+		
+		log.debug(`fundtx new address ${address}`)
+
+		opts = { ...opts, changeAddress: address };
+	}
+
+	return handlePromise(repeatAsync(API.fundRawTransaction, 3)
+		(rawtx, opts), errmsg, v => v.hex);
 }
 
 export function signTx(client: typeof Client, rawtx: string,

@@ -216,6 +216,11 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			return;
 		}
 
+		if (state.price < MIN_CHANGE) {
+			alert("Price too low");
+			return;
+		}
+
 		// case: Bittrex trade without API key
 		if (state.base === PROPID_BITCOIN && (settings.apikey.length === 0
 			|| settings.apisecret.length === 0)) {
@@ -740,7 +745,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 						}}>
 							<select name="ordertype" value={state.orderType}
 								onChange={handleChangeSel}>
-								<option value="market">Market</option>
+								{state.buysell === "buy"
+									&& <option value="market">Market</option>}
 								<option value="limit">Limit</option>
 							</select>
 						</td>
