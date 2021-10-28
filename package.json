@@ -42,6 +42,7 @@
 		"watch": "webpack --mode development --watch",
 		"prebuild": "rimraf ./build/*",
 		"build": "webpack --mode production",
+		"prepackage": "rimraf ./out/*",
 		"package": "electron-forge package",
 		"premake": "rimraf ./out/*",
 		"make-win_32": "electron-forge make --arch=\"ia32\" --platform \"win32\"",
