@@ -25,7 +25,7 @@ import {
 } from './util';
 
 const Chart = () => {
-	const { client, blockTimes, addBlockTime } = React.useContext(AppContext);
+	const { getClient, getBlockTimes, addBlockTime } = React.useContext(AppContext);
 
 	const [idBuy, setIDBuy] = React.useState(-1);
 	const [idSell, setIDSell] = React.useState(-1);
@@ -38,9 +38,12 @@ const Chart = () => {
 
 	const [resizeListener, size] = useResizeAware();
 
-	const tradesCache = useTimeCache((ts, te) => !!client ?
+	const tradesCache = useTimeCache((ts, te) => {
+		const client = getClient();
+		return !!client ?
 		api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp,
-			{ cache: blockTimes, push: addBlockTime }) : null, t => t.time);
+			{ cache: getBlockTimes(), push: addBlockTime }) : null
+	}, t => t.time);
 
 	const uid = React.useMemo(() => uniqueId("chart-"), []);
 
@@ -175,7 +178,7 @@ const Chart = () => {
 		(async function genData() {
 			setReady(false);
 
-			const API = api(client);
+			const API = api(getClient());
 			let data: (BarData | WhitespaceData)[] = [];
 
 			let rawInterval;
@@ -351,7 +354,7 @@ const Chart = () => {
 	useInterval(() => {
 		if (!ready) return;
 		(async function() {
-			const API = api(client);
+			const API = api(getClient());
 
 			const interval = getInterval();
 			const rawInterval = interval === "DAY_1" ? 24 * 60 * 60 :

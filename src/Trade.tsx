@@ -141,7 +141,7 @@ const reducerTrade =
 	}
 
 const Trader = ({ state, dispatch }: TraderProps) => {
-	const { settings, client, addPendingOrder } = React.useContext(AppContext);
+	const { settings, getClient, addPendingOrder } = React.useContext(AppContext);
 
 	const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const target = event.target;
@@ -239,6 +239,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			if (!c) return;
 		}
 
+		const client = getClient();
 		const API = api(client);
 
 		// Omni trade
@@ -637,7 +638,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 	};
 
 	const setTrade = (propid: number) => {
-		const API = api(client);
+		const API = api(getClient());
 
 		dispatch({ type: "set_trade", payload: propid });
 

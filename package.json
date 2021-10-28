@@ -51,6 +51,7 @@
 		"make": "npm run make-win && npm run make-mac && npm run make-linux"
 	},
 	"dependencies": {
+		"abort-controller": "^3.0.0",
 		"appdata-path": "^1.0.0",
 		"async-mutex": "^0.3.2",
 		"bitcoin-core": "^3.0.0",
@@ -63,6 +64,7 @@
 		"luxon": "^2.0.2",
 		"node-7z": "^3.0.0",
 		"node-fetch": "^2.6.5",
+		"rc-progress": "^3.1.4",
 		"react": "^16.14.0",
 		"react-app-menu": "^1.0.11",
 		"react-dom": "^16.14.0",
@@ -73,6 +75,7 @@
 		"react-table": "^7.7.0",
 		"simple-node-logger": "^21.8.12",
 		"split-string": "^6.1.0",
+		"styled-components": "^5.3.3",
 		"tail": "^2.2.4",
 		"terminal-in-react": "^4.3.1",
 		"url-regex": "^5.0.0",
@@ -98,6 +101,7 @@
 		"@types/react-modal": "^3.13.1",
 		"@types/react-notifications-component": "^3.1.1",
 		"@types/react-table": "^7.7.6",
+		"@types/styled-components": "^5.1.15",
 		"@types/tail": "^2.2.1",
 		"@types/webtorrent": "^0.109.2",
 		"css-loader": "^5.2.7",

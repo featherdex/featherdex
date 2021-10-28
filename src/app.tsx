@@ -17,6 +17,7 @@ import { Layout, Model, TabNode } from 'flexlayout-react';
 import api from './api';
 import Order from './order';
 import Assets from './Assets';
+import Downloads from './Download';
 import About from './About';
 import Settings from './Settings';
 import Chart from './Chart';
@@ -32,7 +33,7 @@ import { PROPID_BITCOIN, PROPID_FEATHERCOIN } from './constants';
 import { writeLayout, createWindow } from './util';
 import {
 	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf,
-	isNumber, isBoolean, parseBoolean, handleError, log
+	isNumber, isBoolean, parseBoolean, handlePromise, handleError, log, Queue
 } from './util';
 
 import 'react-notifications-component/dist/theme.css'
@@ -49,16 +50,23 @@ export type AppState = {
 	layoutRef: React.RefObject<Layout>,
 	layout: Model,
 	settings: Settings,
-	setSettings: (s: Record<string, any>) => void,
-	saveSettings: () => void,
 	assetList: PropertyList,
-	client: typeof Client,
+	pendingDownloads: DownloadOpts[],
+	dOpen: boolean,
 	sOpen: boolean,
 	aOpen: boolean,
-	pendingOrders: Order[],
+};
+
+export type AppMethods = {
+	getClient: () => typeof Client,
+	setSettings: (s: Record<string, any>) => void,
+	saveSettings: () => void,
+	addPendingDownload: Queue<DownloadOpts>["push"],
+	clearPendingDownloads: Queue<DownloadOpts>["clear"],
+	getPendingOrders: () => Order[],
 	addPendingOrder: (o: Order) => void,
 	clearStaleOrders: () => void,
-	blockTimes: Tree<number, number>,
+	getBlockTimes: () => Tree<number, number>,
 	addBlockTime: (time: number, height: number) => void,
 };
 
@@ -66,13 +74,20 @@ class App extends React.PureComponent<AppProps, AppState> {
 	genAsset: ReturnType<typeof setTimeout>;
 	clearStale: ReturnType<typeof setTimeout>;
 
+	assetList: PropertyList = [];
+	client: typeof Client;
+	pendingDownloads = new Queue<DownloadOpts>();
+	pendingOrders: Order[] = [];
+	blockTimes: Tree<number, number> = createRBTree<number, number>();
+
+	methods: AppMethods;
+
 	constructor(props: AppProps) {
 		super(props);
 
-		const iSettings = this.props.initSettings;
 		const iRPCSettings = this.props.initRPCSettings;
 
-		let client = new Client({
+		this.client = new Client({
 			host: iRPCSettings.rpchost,
 			port: iRPCSettings.rpcport,
 			username: iRPCSettings.rpcuser,
@@ -81,10 +96,10 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 		log.debug(`host=${iRPCSettings.rpchost}`);
 		log.debug(`port=${iRPCSettings.rpcport}`);
-		log.debug(`username=${iRPCSettings.rpcuser}`)
-		log.debug(`password=${iRPCSettings.rpcpassword}`)
+		log.debug(`username=${iRPCSettings.rpcuser}`);
+		log.debug(`password=${iRPCSettings.rpcpassword}`);
 
-		api(client).isDaemonUp().then((v: boolean) => {
+		api(this.client).isDaemonUp().then((v: boolean) => {
 			if (!v) {
 				alert("Could not establish connection to omnifeather daemon, "
 					+ "please make sure it is running and that the Feathercoin "
@@ -93,21 +108,28 @@ class App extends React.PureComponent<AppProps, AppState> {
 			}
 		});
 
+		this.methods = {
+			getClient: this.getClient,
+			setSettings: this.setSettings,
+			saveSettings: this.saveSettings,
+			addPendingDownload: this.addPendingDownload,
+			clearPendingDownloads: this.clearPendingDownloads,
+			getPendingOrders: this.getPendingOrders,
+			addPendingOrder: this.addPendingOrder,
+			clearStaleOrders: this.clearStaleOrders,
+			getBlockTimes: this.getBlockTimes,
+			addBlockTime: this.addBlockTime,
+		};
+
 		this.state = {
 			layoutRef: React.createRef(),
 			layout: this.props.model,
-			settings: iSettings,
-			setSettings: this.setSettings,
-			saveSettings: this.saveSettings,
+			settings: this.props.initSettings,
 			assetList: [],
-			client: client,
+			pendingDownloads: [],
+			dOpen: false,
 			sOpen: false,
 			aOpen: false,
-			pendingOrders: [],
-			addPendingOrder: this.addPendingOrder,
-			clearStaleOrders: this.clearStaleOrders,
-			blockTimes: createRBTree<number, number>(),
-			addBlockTime: this.addBlockTime,
 		};
 
 		this.genAssetList();
@@ -119,23 +141,34 @@ class App extends React.PureComponent<AppProps, AppState> {
 		clearInterval(this.genAsset);
 	}
 
+	getClient = () => this.client;
+
+	getBlockTimes = () => this.blockTimes;
 	addBlockTime = (time: number, height: number) =>
-		this.setState(oldState =>
-			({ blockTimes: oldState.blockTimes.insert(time, height) }));
+		this.blockTimes = this.blockTimes.insert(time, height);
 
-	addPendingOrder = (order: Order) =>
+	addPendingDownload = (dl: DownloadOpts) => {
+		const ret = this.pendingDownloads.push(dl);
 		this.setState(oldState =>
-			({ pendingOrders: [...oldState.pendingOrders, order] }));
-
-	clearStaleOrders = () => {
-		this.setState(oldState => {
-			const arr = oldState.pendingOrders.filter(o => !o.isDone);
-			if (arr.length !== oldState.pendingOrders.length)
-				return { pendingOrders: arr };
-		});
+			({ pendingDownloads: [...oldState.pendingDownloads, dl] }));
+		return ret;
+	}
+	clearPendingDownloads = () => {
+		const wasEmpty = this.pendingDownloads.queue.length === 0;
+		const ret = this.pendingDownloads.clear();
+		if (!wasEmpty) this.setState({ pendingDownloads: [] });
+		return ret;
 	}
 
-	genAssetList = () => {
+	getPendingOrders = () => this.pendingOrders;
+	addPendingOrder = (order: Order) => this.pendingOrders.push(order);
+	clearStaleOrders = () => {
+		const arr = this.pendingOrders.filter(o => !o.isDone);
+		if (arr.length !== this.pendingOrders.length)
+			this.pendingOrders = [...arr];
+	}
+
+	genAssetList = async () => {
 		let proplist = [{
 			id: PROPID_BITCOIN,
 			name: `${PROPID_BITCOIN}: Bitcoin`,
@@ -145,30 +178,32 @@ class App extends React.PureComponent<AppProps, AppState> {
 			name: `${PROPID_FEATHERCOIN}: Feathercoin`,
 		}];
 
-		if (!this.state.client)
+		if (!this.client)
 			return proplist;
 
-		const API = api(this.state.client);
+		const API = api(this.client);
 
-		repeatAsync(API.listProperties, 3)().then(data =>
-			this.setState(oldState => {
+		this.assetList = await handlePromise(repeatAsync(API.listProperties, 3)(),
+			"Could not list properties for asset list generation", data => {
 				const arr = proplist.concat(data.slice(2).map(x =>
 					({ id: x.propertyid, name: `${x.propertyid}: ${x.name}` })));
-				if (!isEqual(arr, oldState.assetList)) return { assetList: arr };
-			}), e => {
-				handleError(e, "error");
-				return null;
-			});
+				if (!isEqual(arr, this.assetList)) return arr;
+			}) || this.assetList;
 	}
 
 	factory = (node: TabNode) => {
 		var component = node.getComponent();
+
 		const panel = (el: JSX.Element, style: Record<string, any> = {}) =>
 			<div className="panel" style={style}>
-				<AppContext.Provider value={this.state}>
+				<AppContext.Provider value={{
+					...this.state, ...this.methods,
+					assetList: this.assetList,
+				}}>
 					{el}
 				</AppContext.Provider>
-			</div>
+			</div>;
+
 		if (component === "text")
 			return panel(<>Panel {node.getName()}</>);
 		else if (component === "ticker")
@@ -211,7 +246,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 						}, []).map(x => isNumber(x) ? parseFloat(x) :
 							(isBoolean(x) ? parseBoolean(x) : stripQuotes(x)));
 
-					this.state.client.command(stripQuotes(c), ...parseArgs)
+					this.client.command(stripQuotes(c), ...parseArgs)
 						.then((r: Object) =>
 							print(JSON.stringify(r, null, 2)),
 							(err: Error) => print(err.message));
@@ -221,7 +256,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 					"help": (cmd: any, print: (k: any) => void) => {
 						const cmdarr = cmd as string[];
 						const [c, args] = [cmdarr[0], cmdarr.slice(1)];
-						this.state.client.command(c, ...args)
+						this.client.command(c, ...args)
 							.then((r: Object) => print(r),
 								(err: Error) => print(err.message));
 					}
@@ -241,22 +276,25 @@ class App extends React.PureComponent<AppProps, AppState> {
 		return <></>;
 	}
 
-	openSettings = () =>
-		readSettings().then((s) => this.setState({ settings: s, sOpen: true }));
+	openDownloads = () => this.setState({ dOpen: true });
+	closeDownloads = () => this.setState({ dOpen: false });
 
+	openSettings = () => readSettings().then(s => {
+		this.setState({ settings: s, sOpen: true });
+	});
 	setSettings = (s: Record<string, any>) =>
-		this.setState({ settings: { ...this.state.settings, ...s } })
+		this.setState(oldState => ({ settings: { ...oldState.settings, ...s } }));
 	closeSettings = () => this.setState({ sOpen: false });
-	saveSettings = () => {
-		readRPCConf(this.state.settings.dconfpath).then(s =>
-			this.setState({
-				client: new Client({
+	saveSettings = async () => {
+		const clientSettings = await
+			handlePromise(readRPCConf(this.state.settings.dconfpath),
+				"Could not read RPC conf file", s => ({
 					host: s.rpchost,
 					port: s.rpcport,
 					username: s.rpcuser,
 					password: s.rpcpassword,
-				})
-			}));
+				}));
+		if (clientSettings !== null) this.client = new Client(clientSettings);
 		writeSettings(this.state.settings);
 	};
 
@@ -264,7 +302,10 @@ class App extends React.PureComponent<AppProps, AppState> {
 	closeAbout = () => this.setState({ aOpen: false });
 
 	render() {
-		return <AppContext.Provider value={this.state}>
+		return <AppContext.Provider value={{
+			...this.state, ...this.methods,
+			assetList: this.assetList,
+		}}>
 			<Layout
 				ref={this.state.layoutRef}
 				model={this.state.layout}
@@ -275,6 +316,9 @@ class App extends React.PureComponent<AppProps, AppState> {
 			<About
 				isOpen={this.state.aOpen}
 				closeModalCallback={this.closeAbout} />
+			<Downloads
+				isOpen={this.state.dOpen}
+				closeModalCallback={this.closeDownloads} />
 		</AppContext.Provider>;
 	}
 }
@@ -304,13 +348,15 @@ export const addTab = (title: string, component: string) => {
 		<ReactNotification />
 	</>;
 
+	ipcRenderer.on("open:downloads", () => appRef.current.openDownloads());
 	ipcRenderer.on("open:settings", () => appRef.current.openSettings());
 	ipcRenderer.on("open:about", () => appRef.current.openAbout());
 	ipcRenderer.on("open:tab", (_, msg) => addTab(msg.title, msg.component));
 
 	window.onbeforeunload = (e: BeforeUnloadEvent) => {
-		createWindow(path.resolve("src", "shutdown.html"), 120, 60, false);
-		if (appRef.current && appRef.current.state.layout)
+		log.debug("onbeforeunload");
+		ipcRenderer.send("quitmsg");
+		if (!!appRef.current && !!appRef.current.state.layout)
 			writeLayout(appRef.current.state.layout.toJson()).then(_ => {
 				ipcRenderer.send("app_quit");
 				window.onbeforeunload = null;

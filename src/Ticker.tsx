@@ -21,13 +21,13 @@ const TickerElement =
 	};
 
 const TickerMarquee = () => {
-	const { settings, client } = React.useContext(AppContext);
+	const { settings, getClient } = React.useContext(AppContext);
 
 	const [FTCRates, setFTCRates] = React.useState<CoinbaseRate>(null);
 	const [BTCRates, setBTCRates] = React.useState<CoinbaseRate>(null);
 
 	useInterval(async () => {
-		const API = api(client);
+		const API = api(getClient());
 		setFTCRates(await repeatAsync(API.getExchangeRates, 5)("FTC")
 			.catch(_ => null));
 		setBTCRates(await repeatAsync(API.getExchangeRates, 5)("BTC")

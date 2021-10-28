@@ -1,5 +1,5 @@
 import {
-	ipcMain, app, BrowserWindow, Menu, MenuItemConstructorOptions, dialog,
+	ipcMain, app, BrowserWindow, Menu, MenuItemConstructorOptions, dialog, shell,
 	OpenDialogOptions
 } from 'electron';
 
@@ -35,6 +35,10 @@ app.whenReady().then(() => {
 		{ // { role: 'fileMenu' }
 			label: '&File',
 			submenu: [{
+				label: 'Downloads...',
+				click: () => win.webContents.send("open:downloads"),
+			},
+			{
 				label: 'Settings...',
 				click: () => win.webContents.send("open:settings"),
 			},
@@ -142,6 +146,16 @@ app.whenReady().then(() => {
 		(_, data: { rcvChannel: string, opts: OpenDialogOptions }) =>
 			dialog.showOpenDialog(data.opts).then(v =>
 				win.webContents.send(data.rcvChannel, v)));
+
+	ipcMain.on("quitmsg", () => {
+		dialog.showMessageBox(win, {
+			message: "Shutting down...", type: "none", buttons: []
+		});
+	})
+});
+
+ipcMain.on("shell:opencont", (_, pathfile) => {
+	shell.showItemInFolder(pathfile);
 });
 
 ipcMain.on("app_quit", () => {

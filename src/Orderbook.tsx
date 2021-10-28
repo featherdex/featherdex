@@ -28,7 +28,7 @@ type OrderbookProps = {
 }
 
 const Orderbook = ({ state, dispatch }: OrderbookProps) => {
-	const { settings, client } = React.useContext(AppContext);
+	const { settings, getClient } = React.useContext(AppContext);
 
 	const refreshData = async () => {
 		if (state.trade === -1 || state.base === -1
@@ -59,6 +59,7 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 			return data;
 		}
 
+		const client = getClient();
 		const API = api(client);
 		if (state.trade === PROPID_FEATHERCOIN) {
 			// FTC-BTC

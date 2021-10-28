@@ -2,8 +2,10 @@
 
 import React from 'react';
 import Client from 'bitcoin-core';
+import AbortController from 'abort-controller';
 import getAppDataPath from 'appdata-path';
 import ini from 'ini';
+import fetch from 'node-fetch';
 import sum from 'lodash/fp/sum';
 
 import { Mutex } from 'async-mutex';
@@ -69,6 +71,51 @@ export function roundn(v: number, n: number): number {
 	return Number(Math.round(Number(`${v.toString()}e${n.toString()}`)) + "e-" + n)
 }
 
+export async function promiseStatus(p: Promise<unknown>):
+	Promise<"pending" | "fulfilled" | "rejected"> {
+	const uniqueVal = uniqueId("promiseStatus-");
+	return Promise.race([p, uniqueVal]).then(v =>
+		v === uniqueVal ? "pending" : "fulfilled", () => "rejected");
+}
+
+export function downloadFile(url: string, path: string,
+	callback: (status: DownloadProgress) => any): {
+		abort: () => void, promise: Promise<void>
+	} {
+	const controller = new AbortController();
+	const download = async (): Promise<void> => {
+		const response = await fetch(url, { signal: controller.signal });
+		if (response.status === 302)
+			return download();
+		else if (!response.ok)
+			throw new Error(`Could not download ${url}, code ${response.status}`);
+
+		let downBytes = 0;
+		const totalBytes = Number(response.headers.get("content-length"));
+
+		response.body.on("data", (chunk) => {
+			downBytes += chunk.length;
+			callback({ downBytes, totalBytes });
+		});
+
+		const fStream = fs.createWriteStream(path);
+
+		return new Promise((resolve, reject) => {
+			response.body.pipe(fStream);
+			response.body.on("error", () => {
+				callback(null);
+				reject();
+			});
+			fStream.on("finish", () => {
+				callback(null);
+				resolve();
+			});
+		});
+	};
+
+	return { abort: () => controller.abort(), promise: download() };
+}
+
 export const repeatAsync = <T extends unknown>
 	(func: (...args: any[]) => Promise<T>, times: number) =>
 	async (...funcArgs: any[]): Promise<T> => {
@@ -81,9 +128,7 @@ export const repeatAsync = <T extends unknown>
 				return val;
 			});
 
-		if (!v)
-			throw new Error(`Function ${func} timeout `
-				+ `after ${times} tries`);
+		if (!v) throw new Error(`Function ${func} timeout after ${times} tries`);
 
 		return v;
 	}
@@ -135,7 +180,7 @@ export async function readRPCConf(file: string) {
 	return fs.promises.readFile(file).then(contents => {
 		var rpcSettings = { ...defaultRPCSettings };
 		const conf = ini.parse(contents.toString()) as Record<string, unknown>;
-		
+
 		Object.entries(conf).forEach(([k, v]) => {
 			if (rpcSettings.hasOwnProperty(k) && typeof v === "string")
 				rpcSettings[k] = v;
@@ -238,6 +283,7 @@ export async function readLayout() {
 }
 
 export function writeLayout(layout: Object) {
+	log.debug("writeLayout");
 	return writeJson(LAYOUT_NAME, layout);
 }
 
@@ -785,52 +831,43 @@ export function notify(type: ReactNotificationOptions['type'],
 	});
 }
 
-export function useQueue<T extends Stringable>(defaultData = [] as T[]) {
-	const [queue, setQueue] = React.useState<T[]>(defaultData);
-	const [queueMap, setQueueMap] = React.useState<Map<T, number>>(new Map());
+export class Queue<T> {
+	queue = [] as T[];
+	queueMap = new Map<T, number>();
+	mutex = new Mutex();
 
-	const mutex = React.useMemo(() => new Mutex(), []);
+	constructor(initialData = [] as T[]) {
+		this.queue = [...initialData];
+		this.queueMap = initialData.reduce((map, v) =>
+			map.set(v, (map.get(v) || 0) + 1), new Map<T, number>());
+	}
 
-	const push = (...x: T[]) => mutex.runExclusive(() => {
-		setQueue(oldQueue => [...oldQueue, ...x]);
-		setQueueMap(oldQueueMap => x.reduce((map, v) =>
-			map.set(v, (oldQueueMap.get(v) || 0) + 1), new Map(oldQueueMap)));
+	push = (...x: T[]) => this.mutex.runExclusive(() => {
+		this.queue = [...this.queue, ...x];
+		this.queueMap = x.reduce((map, v) =>
+			map.set(v, (map.get(v) || 0) + 1), this.queueMap);
+
+		return this.queue.length;
 	});
 
-	const pop = () => mutex.runExclusive(() => {
-		let x: T;
-
-		setQueue(oldQueue => {
-			const q = [...oldQueue];
-			x = q.shift();
-			return q;
-		});
-
-		if (x !== undefined)
-			setQueueMap(oldQueueMap =>
-				new Map(oldQueueMap).set(x, oldQueueMap.get(x) - 1));
-
+	pop = () => this.mutex.runExclusive(() => {
+		let x = this.queue.shift();
+		if (x !== undefined) {
+			if (this.queueMap.get(x) === 1) this.queueMap.delete(x);
+			else this.queueMap.set(x, this.queueMap.get(x) - 1);
+		}
 		return x;
 	});
 
-	const clear = () => mutex.runExclusive(() => {
-		let oQueue: T[] = [];
-		let oQueueMap = new Map<T, number>();
+	clear = () => this.mutex.runExclusive(() => {
+		const oQueue = [...this.queue];
+		const oQueueMap = new Map(this.queueMap);
 
-		setQueue(oldQueue => {
-			oQueue = [...oldQueue];
-			return [];
-		});
-		setQueueMap(oldQueueMap => {
-			oQueueMap = new Map(oldQueueMap);
-			return new Map();
-		});
+		this.queue = [];
+		this.queueMap = new Map<T, number>();
 
 		return { oldQueue: oQueue, oldQueueMap: oQueueMap };
 	});
 
-	const has = (x: T) => queueMap.get(x) > 0;
-	const count = (x: T) => queueMap.get(x) || 0;
-
-	return { queue, queueMap, push, pop, clear, has, count };
+	has = (x: T) => this.queueMap.has(x);
 }

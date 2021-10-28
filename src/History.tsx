@@ -27,11 +27,13 @@ type Data = {
 };
 
 const History = () => {
-	const { settings, client } = React.useContext(AppContext);
+	const { settings, getClient } = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
 
-	const myTradesCache = useTimeCache((ts, te) =>
-		!!client ? api(client).listMyAssetTrades(ts, te) : null, t => t.block);
+	const myTradesCache = useTimeCache((ts, te) => {
+		const client = getClient();
+		return !!client ? api(client).listMyAssetTrades(ts, te) : null;
+	}, t => t.block);
 
 	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
 		{
@@ -97,7 +99,7 @@ const History = () => {
 	);
 
 	const refreshData = async () => {
-		const API = api(client);
+		const API = api(getClient());
 
 		const blockHeight = await
 			handlePromise(repeatAsync(API.getBlockchainInfo, 5)(),

@@ -27,6 +27,16 @@ declare interface Stringable {
 	toString: () => string,
 }
 
+declare type DownloadOpts = {
+	url: string,
+	path: string,
+};
+
+declare type DownloadProgress = {
+	downBytes: number,
+	totalBytes: number,
+};
+
 declare type BlockTimeStruct = {
 	cache: import('functional-red-black-tree').Tree<number, number>,
 	push: (time: number, height: number) => void,

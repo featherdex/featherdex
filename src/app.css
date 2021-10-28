@@ -107,11 +107,6 @@ div.ok-cancel > button {
 	margin-left: 12px;
 }
 
-div.settings-body {
-	height: calc(100% - 32px - 2*19.92px - 35px - 2*6px);
-	overflow: auto;
-}
-
 label.form-element {
 	display: block;
 }

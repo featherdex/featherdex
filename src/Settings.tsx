@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Modal from 'react-modal';
+import styled from 'styled-components';
 
 import { ipcRenderer, OpenDialogReturnValue } from 'electron';
 
@@ -15,6 +16,18 @@ type SettingsProps = {
 	isOpen: boolean,
 	closeModalCallback: () => void,
 };
+
+const Container = styled.div`
+width: 100%;
+height: 100%;
+display: flex;
+flex-direction: column;
+`;
+
+const Body = styled.div`
+flex: 1;
+overflow: auto;
+`;
 
 export default function Settings({ isOpen, closeModalCallback }
 	: SettingsProps) {
@@ -59,71 +72,75 @@ export default function Settings({ isOpen, closeModalCallback }
 				}
 			}}
 		>
-			<h2>Settings</h2>
-			<div className="settings-body">
-				<h3>Omnifeather application</h3>
-				<label>Feathercoin config location:&nbsp;
+			<Container>
+				<h2>Settings</h2>
+				<Body>
+					<h3>Omnifeather application</h3>
+					<label>Feathercoin config location:&nbsp;
 					<input type="text" className="dconfpath form-field"
-						name="dconfpath" value={settings.dconfpath} size={40}
-						onChange={handleChange} />
-					<button onClick={() => ipcRenderer.send("choose", {
-						rcvChannel: "choose:conf",
-						options: {
-							title: "Choose Config File...",
-							filters: [{
-								name: "Feathercoin Config Files",
-								extensions: ["conf"],
-							},
-							{ name: "All Files", extensions: ["*"] }],
-							properties: ["openFile"],
-						}
-					})}> Choose File</button>
-				</label>
-				<div>
-					<h3>Number display format</h3>
-					<label className="form-element">
-						<input type="radio" name="numformat-us"
-							checked={settings.numformat === US_NUMF}
-							onChange={handleChange} /> 100,000.00
+							name="dconfpath" value={settings.dconfpath} size={40}
+							onChange={handleChange} />
+						<button onClick={() => ipcRenderer.send("choose", {
+							rcvChannel: "choose:conf",
+							options: {
+								title: "Choose Config File...",
+								filters: [{
+									name: "Feathercoin Config Files",
+									extensions: ["conf"],
+								},
+								{ name: "All Files", extensions: ["*"] }],
+								properties: ["openFile"],
+							}
+						})}> Choose File</button>
 					</label>
-					<label className="form-element">
-						<input type="radio" name="numformat-eu"
-							checked={settings.numformat === EU_NUMF}
-							onChange={handleChange} /> 100.000,00
+					<div>
+						<h3>Number display format</h3>
+						<label className="form-element">
+							<input type="radio" name="numformat-us"
+								checked={settings.numformat === US_NUMF}
+								onChange={handleChange} /> 100,000.00
 					</label>
-					<label className="form-element">
-						<input type="radio" name="numformat-in"
-							checked={settings.numformat === IN_NUMF}
-							onChange={handleChange} /> 1,00,000.00
+						<label className="form-element">
+							<input type="radio" name="numformat-eu"
+								checked={settings.numformat === EU_NUMF}
+								onChange={handleChange} /> 100.000,00
 					</label>
-					<label className="form-element">
-						<input type="radio" name="numformat-fr"
-							checked={settings.numformat === FR_NUMF}
-							onChange={handleChange} /> 100 000,00
+						<label className="form-element">
+							<input type="radio" name="numformat-in"
+								checked={settings.numformat === IN_NUMF}
+								onChange={handleChange} /> 1,00,000.00
 					</label>
-				</div>
-				<div>
-					<h3>Bittrex API (stored plaintext)</h3>
-					<label>API key:&nbsp;
+						<label className="form-element">
+							<input type="radio" name="numformat-fr"
+								checked={settings.numformat === FR_NUMF}
+								onChange={handleChange} /> 100 000,00
+					</label>
+					</div>
+					<div>
+						<h3>Bittrex API (stored plaintext)</h3>
+						<label>API key:&nbsp;
 						<input type="text" className="apikey form-field"
-							name="apikey" value={settings.apikey}
-							size={32} onChange={handleChange} />
-					</label>
-					<label>API secret:&nbsp;
+								name="apikey" value={settings.apikey}
+								size={32} onChange={handleChange} />
+						</label>
+						<label>API secret:&nbsp;
 						<input type="password" className="apsecret form-field"
-							name="apisecret" value={settings.apisecret}
-							size={32} onChange={handleChange} />
-					</label>
+								name="apisecret" value={settings.apisecret}
+								size={32} onChange={handleChange} />
+						</label>
+					</div>
+				</Body>
+				<div>
+					<div className="ok-cancel">
+						<button onClick={saveSettings}>Apply</button>
+						<button onClick={() => {
+							saveSettings();
+							closeModalCallback();
+						}}>Apply and close</button>
+						<button onClick={closeModalCallback}>Cancel</button>
+					</div>
 				</div>
-			</div>
-			<div className="ok-cancel">
-				<button onClick={saveSettings}>Apply</button>
-				<button onClick={() => {
-					saveSettings();
-					closeModalCallback();
-				}}>Apply and close</button>
-				<button onClick={closeModalCallback}>Cancel</button>
-			</div>
+			</Container>
 		</Modal>
 	</div>
 		;

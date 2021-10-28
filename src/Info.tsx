@@ -57,7 +57,7 @@ const NFTTable = ({ data }: NFTTableProps) => {
 };
 
 const Info = () => {
-	const { settings, client } = React.useContext(AppContext);
+	const { settings, getClient } = React.useContext(AppContext);
 
 	const [asset, setAsset] = React.useState(-1);
 	const [assetInfo, setAssetInfo] = React.useState<AssetInfo>(null);
@@ -189,7 +189,7 @@ const Info = () => {
 			return;
 		}
 
-		const API = api(client);
+		const API = api(getClient());
 		repeatAsync(API.getProperty, 5)(asset).then(v => {
 			setAssetInfo(v);
 			if (v["non-fungibletoken"])

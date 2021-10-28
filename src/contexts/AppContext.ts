@@ -3,23 +3,27 @@
 import React from 'react';
 
 import { defaultSettings } from '../defaults';
-import { AppState } from '../app';
+import { AppState, AppMethods } from '../app';
 
 const AppContext =
-	React.createContext<AppState>({
+	React.createContext<AppState & AppMethods>({
 		layoutRef: null,
 		layout: null,
+		assetList: [],
+		getClient: null,
 		settings: defaultSettings,
 		setSettings: null,
 		saveSettings: null,
-		assetList: [],
-		client: null,
+		dOpen: false,
 		sOpen: false,
 		aOpen: false,
+		pendingDownloads: [],
+		addPendingDownload: null,
+		clearPendingDownloads: null,
+		getPendingOrders: null,
 		addPendingOrder: null,
 		clearStaleOrders: null,
-		pendingOrders: [],
-		blockTimes: null,
+		getBlockTimes: null,
 		addBlockTime: null,
 	});
 export default AppContext;

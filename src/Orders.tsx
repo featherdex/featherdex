@@ -20,7 +20,7 @@ import {
 import {
 	handleError, handlePromise, repeatAsync, waitForTx, createRawOrder, roundn,
 	estimateTxFee, fundTx, signTx, sendTx, toUTXO, toFormattedAmount, toTradeInfo,
-	notify, useQueue, log
+	notify, log, Queue
 } from './util';
 
 export type Data = {
@@ -37,13 +37,17 @@ export type Data = {
 };
 
 const Orders = () => {
-	const { settings, client, pendingOrders } = React.useContext(AppContext);
+	const {
+		settings, getClient, getPendingOrders
+	} = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
 	const [active, setActive] = React.useState<string[]>([]);
-	const canceledOrders = useQueue<string>([]);
+	const cancelledOrders = React.useMemo(() => new Queue<string>(), []);
 
-	const myTradesCache = useTimeCache((ts, te) =>
-		!!client ? api(client).listMyAssetTrades(ts, te) : null, t => t.block);
+	const myTradesCache = useTimeCache((ts, te) => {
+		const client = getClient();
+		return !!client ? api(client).listMyAssetTrades(ts, te) : null
+	}, t => t.block);
 
 	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
 		{
@@ -121,6 +125,7 @@ const Orders = () => {
 	);
 
 	const sendCancel = async (trade: AssetTrade) => {
+		const client = getClient();
 		const API = api(client);
 
 		let cancelFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
@@ -145,7 +150,9 @@ const Orders = () => {
 				handlePromise(repeatAsync(API.createRawTransaction, 3)
 					({
 						ins: [],
-						outs: [{ [trade.address]: cancelFee + MIN_CHANGE }]
+						outs: [{
+							[trade.address]: roundn(cancelFee + MIN_CHANGE, 8),
+						}]
 					}),
 					"Could not create raw transaction for cancel fee funding");
 			if (pretx === null) return;
@@ -184,7 +191,7 @@ const Orders = () => {
 		}
 
 		waitForTx(client, canceltx).then(_ => {
-			canceledOrders.push(trade.txid);
+			cancelledOrders.push(trade.txid);
 			notify("success", "Cancelled order",
 				`Cancelled order ${toTradeInfo(trade)}`);
 		});
@@ -193,7 +200,7 @@ const Orders = () => {
 	}
 
 	const refreshData = async () => {
-		const API = api(client);
+		const API = api(getClient());
 
 		const blockHeight = await
 			handlePromise(repeatAsync(API.getBlockchainInfo, 5)(),
@@ -210,7 +217,7 @@ const Orders = () => {
 				&& (v as DexOrder).action === "cancel").map(v =>
 					({ [v.sendingaddress]: true })));
 
-		const pendingData: Data[] = pendingOrders.map(v => {
+		const pendingData: Data[] = getPendingOrders().map(v => {
 			return {
 				cancel: v.finalizing ? <></> : <a href="#" onClick={() => {
 					v.cancel();
@@ -230,7 +237,7 @@ const Orders = () => {
 			};
 		});
 
-		const oldCancelled = await canceledOrders.clear();
+		const oldCancelled = await cancelledOrders.clear();
 		let myTrades = [...await myTradesCache.refresh(OMNI_START_HEIGHT,
 			blockHeight, trade => oldCancelled.oldQueueMap.has(trade.txid))];
 		myTrades.reverse();
@@ -264,7 +271,7 @@ const Orders = () => {
 							handlePromise(repeatAsync(API.cancelBittrexOrder, 3)
 								(settings.apikey, settings.apisecret, v.id)
 								.then(v => notify("success",
-									"Canceled order", toTradeInfo(v))),
+									"Cancelled order", toTradeInfo(v))),
 								`Failed to cancel Bittrex order ${toTradeInfo(v)}`)
 						}>Cancel</a>,
 						time: Math.floor(DateTime.fromISO(v.createdAt)
@@ -291,19 +298,16 @@ const Orders = () => {
 			"Could not get active sells for clearing out old filled orders", arr =>
 			arr.map(v => v.txid));
 
-		let remove: string[] = [];
 		setActive(oldActive => {
 			const newMap = dexTXs.reduce((map, v) =>
 				map.set(v, true), new Map<string, boolean>());
-			remove = oldActive.filter(v => !newMap.has(v));
+			cancelledOrders.push(...oldActive.filter(v => !newMap.has(v)));
 			return dexTXs;
 		});
-
-		canceledOrders.push(...remove);
 	}
 
-	React.useEffect(() => { refreshData(); }, []);
-	useInterval(refreshData, 3000);
+	React.useEffect(() => { refreshData(); }, [settings]);
+	useInterval(refreshData, 5000);
 
 	if (data && data.length > 0)
 		return <Table className="orders-table" columns={columns} data={data} />;
