@@ -9,7 +9,8 @@
 		"forge": {
 			"packagerConfig": {
 				"icon": "img/icon-256px",
-				"asar": true
+				"asar": true,
+				"prune": true
 			},
 			"makers": [
 				{

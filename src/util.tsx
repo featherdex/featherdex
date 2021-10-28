@@ -30,15 +30,15 @@ import * as path from 'path';
 
 import { app, BrowserWindow, shell } from 'electron';
 
+let lastId = 0;
+const rootPath = getAppDataPath(APP_NAME);
+
 export const log = require('simple-node-logger').createSimpleLogger({
-	logFilePath: 'featherdex.log',
+	logFilePath: path.join(rootPath, 'featherdex.log'),
 	timestampFormat: 'YYYY-MM-DD HH:mm:ss.SSS'
 });
 
 log.setLevel('debug');
-
-let lastId = 0;
-const rootPath = getAppDataPath(APP_NAME);
 
 export function uniqueId(prefix = 'id') {
 	lastId++;
@@ -733,7 +733,7 @@ export async function fundTx(client: typeof Client, rawtx: string,
 		const address = await handlePromise(repeatAsync(API.getNewAddress, 5)
 			(ACCOUNT_LABEL), `${errmsg} (getnewaddress)`);
 		if (address === null) return null;
-		
+
 		log.debug(`fundtx new address ${address}`)
 
 		opts = { ...opts, changeAddress: address };
