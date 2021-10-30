@@ -40,9 +40,9 @@ npm i
 
 For continuous test builds, run `npm run watch`. For production builds, run `npm run build`. Once you have built the app, run `npm run start`.
 
-To package the app, run `npm run package`. The app should be in `./out/featherdex-[PLATFORM]-[ARCH]`.
+To package the app, run `npm run build`, and then `npm run package`. The app should be in `./out/featherdex-[PLATFORM]-[ARCH]`.
 
-To build deliverables for the app, run `npm run make`. The built deliverables should be in `./out/make/[FORMAT]/[PLATFORM]/[ARCH]/`.
+To build deliverables for the app, run `npm run build`, and then `npm run make`. The built deliverables should be in `./out/make/[FORMAT]/[PLATFORM]/[ARCH]/`.
 
 ## Bug Reports
 
