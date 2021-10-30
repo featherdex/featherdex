@@ -8,7 +8,7 @@ import { uniqueId } from './util';
 type TableProps = {
 	className: string,
 	columns: Column<Record<string, any>>[],
-	data: Record<string, number | string | JSX.Element>[],
+	data: Record<string, unknown>[],
 	overflow?: boolean,
 	select?: boolean,
 };

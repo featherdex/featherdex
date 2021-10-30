@@ -79,7 +79,7 @@ export default function Settings({ isOpen, closeModalCallback }
 					<label>Feathercoin config location:&nbsp;
 					<input type="text" className="dconfpath form-field"
 							name="dconfpath" value={settings.dconfpath} size={40}
-							onChange={handleChange} />
+							onChange={handleChange} style={{marginRight: "10px"}} />
 						<button onClick={() => ipcRenderer.send("choose", {
 							rcvChannel: "choose:conf",
 							options: {
@@ -91,7 +91,7 @@ export default function Settings({ isOpen, closeModalCallback }
 								{ name: "All Files", extensions: ["*"] }],
 								properties: ["openFile"],
 							}
-						})}> Choose File</button>
+						})}>Choose File</button>
 					</label>
 					<div>
 						<h3>Number display format</h3>
@@ -118,7 +118,7 @@ export default function Settings({ isOpen, closeModalCallback }
 					</div>
 					<div>
 						<h3>Bittrex API (stored plaintext)</h3>
-						<label>API key:&nbsp;
+						<label style={{marginRight: "10px"}}>API key:&nbsp;
 						<input type="text" className="apikey form-field"
 								name="apikey" value={settings.apikey}
 								size={32} onChange={handleChange} />

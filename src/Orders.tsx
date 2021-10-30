@@ -6,6 +6,7 @@ import useInterval from 'use-interval';
 import { Column } from 'react-table';
 import { DateTime } from 'luxon';
 import { UTCTimestamp } from 'lightweight-charts';
+import { Menu, Item, useContextMenu, theme } from 'react-contexify';
 
 import AppContext from './contexts/AppContext';
 import Table from './Table';
@@ -13,19 +14,20 @@ import useTimeCache from './timecache';
 import api from './api';
 
 import {
-	PROPID_BITCOIN, PROPID_FEATHERCOIN, OMNI_START_HEIGHT, SATOSHI, MIN_CHANGE,
-	EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE, OPRETURN_ORDER_VSIZE, OrderAction
+	PROPID_BITCOIN, PROPID_FEATHERCOIN, OMNI_START_HEIGHT, MIN_CHANGE,
+	OMNI_EXPLORER_ENDPOINT, COIN_EXPLORER_ENDPOINT, EMPTY_TX_VSIZE, TX_I_VSIZE,
+	TX_O_VSIZE, OPRETURN_ORDER_VSIZE, OrderAction
 } from './constants';
 
 import {
 	handleError, handlePromise, repeatAsync, waitForTx, createRawOrder, roundn,
 	estimateTxFee, fundTx, signTx, sendTx, toUTXO, toFormattedAmount, toTradeInfo,
-	notify, log, Queue
+	notify, log, sendOpenLink, Queue
 } from './util';
 
 export type Data = {
 	cancel: JSX.Element | string,
-	time: UTCTimestamp,
+	time: { time: UTCTimestamp, txid?: string },
 	status: string,
 	idBuy: number,
 	idSell: number,
@@ -44,10 +46,19 @@ const Orders = () => {
 	const [active, setActive] = React.useState<string[]>([]);
 	const cancelledOrders = React.useMemo(() => new Queue<string>(), []);
 
+	const { show } = useContextMenu({
+		id: "orders-time",
+	});
+
 	const myTradesCache = useTimeCache((ts, te) => {
 		const client = getClient();
 		return !!client ? api(client).listMyAssetTrades(ts, te) : null
 	}, t => t.block);
+
+	const onContextMenu = (event: React.MouseEvent<HTMLSpanElement, MouseEvent>) => {
+		event.preventDefault();
+		show(event);
+	}
 
 	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
 		{
@@ -59,9 +70,27 @@ const Orders = () => {
 			Header: 'Time',
 			accessor: 'time',
 			width: 145,
-			Cell: (props: Record<string, any>) =>
-				props.value ? DateTime.fromSeconds(props.value).toISO()
-					.replace("T", " ").slice(0, -10) + " UTC" : "",
+			Cell: (props: Record<string, any>) => {
+				if (!props.value) return "";
+
+				const v = props.value;
+				return <>
+					<span {...(v.txid ? { title: v.txid, onContextMenu } : {})}>
+						{v.time ? DateTime.fromSeconds(v.time).toISO().replace("T",
+							" ").slice(0, -10) + " UTC" : ""}</span>
+					{!!v.txid && <Menu id="history-time" theme={theme.dark}
+						animation={false}>
+						<Item onClick={() =>
+							sendOpenLink(`${OMNI_EXPLORER_ENDPOINT}/tx/${v.txid}`)}>
+							Open in Omnifeather Explorer...
+						</Item>
+						<Item onClick={() =>
+							sendOpenLink(`${COIN_EXPLORER_ENDPOINT}/tx/${v.txid}`)}>
+							Open in Feathercoin Explorer...
+						</Item>
+					</Menu>}
+				</>;
+			},
 		},
 		{
 			Header: 'Status',
@@ -224,7 +253,7 @@ const Orders = () => {
 					notify("success", "Canceled pending order",
 						`Canceled order ${toTradeInfo(v)}`);
 				}}>Cancel</a>,
-				time: v.time,
+				time: { time: v.time },
 				status: v.status,
 				idBuy: v.buysell === "buy" ? v.id : PROPID_FEATHERCOIN,
 				idSell: v.buysell === "sell" ? v.id : PROPID_FEATHERCOIN,
@@ -246,7 +275,7 @@ const Orders = () => {
 			v.status === "OPEN").map((v: AssetTrade) =>
 			({
 				cancel: <a href="#" onClick={() => sendCancel(v)}> Cancel</a>,
-				time: v.time,
+				time: { time: v.time, txid: v.txid },
 				status: pendingCancels[v.address] ? "CANCELING" : v.status,
 				idBuy: v.idBuy,
 				idSell: v.idSell,
@@ -274,8 +303,10 @@ const Orders = () => {
 									"Cancelled order", toTradeInfo(v))),
 								`Failed to cancel Bittrex order ${toTradeInfo(v)}`)
 						}>Cancel</a>,
-						time: Math.floor(DateTime.fromISO(v.createdAt)
-							.toSeconds()) as UTCTimestamp,
+						time: {
+							time: Math.floor(DateTime.fromISO(v.createdAt)
+								.toSeconds()) as UTCTimestamp
+						},
 						status: "PLACED",
 						idBuy: v.direction === "BUY" ?
 							PROPID_FEATHERCOIN : PROPID_BITCOIN,
@@ -291,7 +322,7 @@ const Orders = () => {
 					}));
 
 		setData(pendingData.concat(historyData).concat(bittrexData)
-			.sort((a, b) => b.time - a.time));
+			.sort((a, b) => b.time.time - a.time.time));
 
 		// Clear out old filled orders
 		const dexTXs = await handlePromise(repeatAsync(API.getExchangeSells, 3)(),

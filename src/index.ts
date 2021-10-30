@@ -158,6 +158,10 @@ ipcMain.on("shell:opencont", (_, pathfile) => {
 	shell.showItemInFolder(pathfile);
 });
 
+ipcMain.on("shell:openlink", (_, url) => {
+	shell.openExternal(url);
+});
+
 ipcMain.on("app_quit", () => {
 	if (!isMac) app.quit();
 });

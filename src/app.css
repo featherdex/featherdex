@@ -25,6 +25,10 @@
 	box-shadow: inset 0 0 6px rgba(255,255,255,0.5);
 }
 
+.react-contexify {
+	box-shadow: 4px 4px 8px 0px rgba(0, 0, 0, 0.1) !important;
+}
+
 body {
 	margin: 0;
 	padding: 0;
@@ -73,7 +77,6 @@ div.table-select {
 
 input.form-field {
 	margin-left: 8px;
-	margin-right: 8px;
 }
 
 button {
@@ -305,7 +308,7 @@ div.trader, div.orderbook {
 
 div.trader {
 	float: left;
-	width: 450px;
+	width: 460px;
 }
 
 .trader-inputs {
@@ -319,6 +322,7 @@ div.trader {
 }
 
 input.coin {
+	caret-color: red;
 	width: 11em;
 }
 

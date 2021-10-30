@@ -24,10 +24,15 @@ export const TYPE_GRANT_PROPERTY = 55;
 
 export const BITTREX_API_ENDPOINT = "https://api.bittrex.com/v3";
 export const COINBASE_API_ENDPOINT = "https://api.coinbase.com/v2";
+export const OMNI_EXPLORER_ENDPOINT = "https://dt45325.omniexplorer.info/ftc";
+export const COIN_EXPLORER_ENDPOINT = "https://explorer.feathercoin.com";
 export const COIN_MARKET = "FTC-BTC";
 
 export const BITCOIN_SYMBOL = "\u20bf";
 export const EURO_SYMBOL = "\u20ac";
+export const X_SYMBOL = "\u2715";
+export const UP_SYMBOL = "\u25b2";
+export const DOWN_SYMBOL = "\u25bc";
 
 export const PROPID_BITCOIN = 0;
 export const PROPID_FEATHERCOIN = 1;

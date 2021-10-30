@@ -6,17 +6,23 @@ import useInterval from 'use-interval';
 import { Column } from 'react-table';
 import { DateTime } from 'luxon';
 import { UTCTimestamp } from 'lightweight-charts';
+import { Menu, Item, useContextMenu, theme } from 'react-contexify';
 
 import AppContext from './contexts/AppContext';
 import useTimeCache from './timecache';
 import Table from './Table';
 import api from './api';
 
-import { PROPID_BITCOIN, PROPID_FEATHERCOIN, OMNI_START_HEIGHT } from './constants';
-import { handlePromise, repeatAsync, handleError, toFormattedAmount } from './util';
+import {
+	PROPID_BITCOIN, PROPID_FEATHERCOIN, OMNI_START_HEIGHT, OMNI_EXPLORER_ENDPOINT,
+	COIN_EXPLORER_ENDPOINT
+} from './constants';
+import {
+	handlePromise, repeatAsync, handleError, toFormattedAmount, sendOpenLink
+} from './util';
 
 type Data = {
-	time: UTCTimestamp,
+	time: { time: UTCTimestamp, txid?: string },
 	status: string,
 	idBuy: number,
 	idSell: number,
@@ -30,19 +36,46 @@ const History = () => {
 	const { settings, getClient } = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
 
+	const { show } = useContextMenu({
+		id: "history-time",
+	});
+
 	const myTradesCache = useTimeCache((ts, te) => {
 		const client = getClient();
 		return !!client ? api(client).listMyAssetTrades(ts, te) : null;
 	}, t => t.block);
+
+	const onContextMenu = (event: React.MouseEvent<HTMLSpanElement, MouseEvent>) => {
+		event.preventDefault();
+		show(event);
+	}
 
 	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
 		{
 			Header: 'Time',
 			accessor: 'time',
 			width: 145,
-			Cell: (props: Record<string, any>) =>
-				props.value ? DateTime.fromSeconds(props.value).toISO()
-					.replace("T", " ").slice(0, -10) + " UTC" : "",
+			Cell: (props: Record<string, any>) => {
+				if (!props.value) return "";
+
+				const v = props.value;
+				return <>
+					<span {...(v.txid ? { title: v.txid, onContextMenu } : {})}>
+						{v.time ? DateTime.fromSeconds(v.time).toISO().replace("T",
+							" ").slice(0, -10) + " UTC" : ""}</span>
+					{!!v.txid && <Menu id="history-time" theme={theme.dark}
+						animation={false}>
+						<Item onClick={() =>
+							sendOpenLink(`${OMNI_EXPLORER_ENDPOINT}/tx/${v.txid}`)}>
+							Open in Omnifeather Explorer...
+						</Item>
+						<Item onClick={() =>
+							sendOpenLink(`${COIN_EXPLORER_ENDPOINT}/tx/${v.txid}`)}>
+							Open in Feathercoin Explorer...
+						</Item>
+					</Menu>}
+				</>;
+			},
 		},
 		{
 			Header: 'Status',
@@ -115,7 +148,7 @@ const History = () => {
 			v.status === "CLOSED"
 			|| v.status === "CANCELLED").map((v: AssetTrade) => {
 				return {
-					time: v.time,
+					time: { time: v.time, txid: v.txid },
 					status: v.status,
 					idBuy: v.idBuy,
 					idSell: v.idSell,
@@ -136,8 +169,10 @@ const History = () => {
 						return [];
 					})).map(v => {
 						return {
-							time: Math.floor(DateTime.fromISO(v.closedAt)
-								.toSeconds()) as UTCTimestamp,
+							time: {
+								time: Math.floor(DateTime.fromISO(v.closedAt)
+									.toSeconds()) as UTCTimestamp
+							},
 							status: v.status,
 							idBuy: v.direction === "BUY" ?
 								PROPID_FEATHERCOIN : PROPID_BITCOIN,
@@ -154,7 +189,7 @@ const History = () => {
 		}
 
 		setData(historyData.concat(bittrexData)
-			.sort((a, b) => b.time - a.time));
+			.sort((a, b) => b.time.time - a.time.time));
 	}
 
 	React.useEffect(() => { refreshData(); }, []);

@@ -1,4 +1,8 @@
 import React from 'react';
+import NumberFormat from 'react-number-format';
+import styled from 'styled-components';
+
+import { NumberFormatValues } from 'react-number-format';
 
 import AppContext from './contexts/AppContext';
 
@@ -9,12 +13,12 @@ import Orderbook from './Orderbook';
 
 import {
 	repeatAsync, handleError, handlePromise, getFillOrders, getAddressAssets,
-	isNumber, roundn, toTradeInfo, estimateSellFee, estimateBuyFee, createRawAccept,
+	roundn, toTradeInfo, estimateSellFee, estimateBuyFee, createRawAccept,
 	createRawPay, createRawSend, createRawOrder, fundTx, signTx, sendTx, toUTXO,
 	notify, log
 } from './util';
 import {
-	SATOSHI, MIN_CHANGE, TRADE_FEERATE, MIN_TRADE_FEE,
+	SATOSHI, MIN_CHANGE, TRADE_FEERATE, MIN_TRADE_FEE, UP_SYMBOL, DOWN_SYMBOL,
 	PROPID_BITCOIN, PROPID_FEATHERCOIN, ACCOUNT_LABEL, OrderAction
 } from './constants';
 
@@ -143,33 +147,33 @@ const reducerTrade =
 const Trader = ({ state, dispatch }: TraderProps) => {
 	const { settings, getClient, addPendingOrder } = React.useContext(AppContext);
 
+	const cDispatch = (type: TraderAction["type"]) => (payload: any) =>
+		dispatch({ type, payload });
+
 	const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const target = event.target;
-		const value = target.type === "checkbox" ?
+		const v = target.type === "checkbox" ?
 			target.checked : target.value;
 		const name = target.name;
 
-		if (isNumber(value)) {
-			if (name === "price")
-				dispatch({
-					type: "set_price", payload: parseFloat(value as string)
-				});
-			else if (name === "quantity")
-				dispatch({
-					type: "set_quantity", payload: parseFloat(value as string)
-				});
-			else if (name === "fee")
-				dispatch({
-					type: "set_fee", payload: parseFloat(value as string)
-				});
-			else if (name === "total")
-				dispatch({
-					type: "set_total", payload: parseFloat(value as string)
-				});
-		} else if (name === "confirm")
-			dispatch({ type: "set_confirm", payload: value as boolean });
-		else if (name === "nohighfees")
-			dispatch({ type: "set_nohighfees", payload: value as boolean });
+		switch (name) {
+			case "price":
+				cDispatch("set_price")(parseFloat(v as string));
+				break;
+			case "quantity":
+				cDispatch("set_quantity")(parseFloat(v as string));
+				break;
+			case "total":
+				cDispatch("set_total")(parseFloat(v as string));
+				break;
+			case "confirm":
+				cDispatch("set_confirm")(v as boolean);
+				break;
+			case "nohighfees":
+				cDispatch("set_nohighfees")(v as boolean);
+				break;
+			default:
+		}
 	}
 
 	const handleChangeSel = (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -177,16 +181,18 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		const value = target.value;
 		const name = target.name;
 
-		if (name === "baseasset")
-			dispatch({
-				type: "set_base",
-				payload: value === "btc" ? PROPID_BITCOIN :
-					(value === "ftc" ? PROPID_FEATHERCOIN : -1),
-			});
-		else if (name === "ordertype")
-			dispatch({ type: "set_ordertype", payload: value });
-		else if (name === "buysell")
-			dispatch({ type: "set_buysell", payload: value });
+		switch (name) {
+			case "baseasset":
+				cDispatch("set_base")(value === "btc" ? PROPID_BITCOIN :
+					(value === "ftc" ? PROPID_FEATHERCOIN : -1));
+				break;
+			case "ordertype":
+				cDispatch("set_ordertype")(value);
+				break;
+			case "buysell":
+				cDispatch("set_buysell")(value);
+				break;
+		}
 	}
 
 	const doTrade = async () => {
@@ -677,11 +683,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 							Price:
 						</td>
 						<td>
-							<input type="number" name="price"
-								className="coin form-field"
-								value={state.price.toFixed(8)} step={SATOSHI}
-								min={0} onChange={handleChange}
-								disabled={state.orderType === "market"} />
+							<CoinInput value={state.price}
+								dispatch={cDispatch("set_price")} step={SATOSHI} />
 						</td>
 					</tr>
 					<tr>
@@ -692,21 +695,19 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 							minWidth: "120px",
 							padding: "0 8px 0 8px",
 							fontFamily: "monospace",
-							fontSize: "9pt",
+							fontSize: "12pt",
 							textAlign: "right",
 						}}>
-							{state.trade === 1 ?
-								"BTC / Bitcoin" : "FTC / Feathercoin"}
+							{state.trade === 1 ? "BTC" : "FTC"}
 						</td>
 						<td style={{ fontSize: "9pt", textAlign: "right" }}>
 							Quantity:
 						</td>
 						<td>
-							<input type="number" name="quantity"
-								className="coin form-field"
-								value={state.quantity.toFixed(state.isDivisible ?
-									8 : 0)} step={state.isDivisible ? SATOSHI : 1}
-								min={0} onChange={handleChange}
+							<CoinInput value={state.quantity}
+								dispatch={cDispatch("set_quantity")}
+								step={state.isDivisible ? SATOSHI : 1}
+								digits={state.isDivisible ? 8 : 0}
 								disabled={state.orderType === "market"
 									&& state.buysell === "buy"} />
 						</td>
@@ -732,7 +733,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 							<input type="number" name="fee"
 								className="coin form-field"
 								value={state.fee.toFixed(8)} step={SATOSHI}
-								min={0} onChange={handleChange} readOnly />
+								min={0} readOnly />
 						</td>
 					</tr>
 					<tr>
@@ -754,12 +755,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 							Total:
 						</td>
 						<td>
-							<input type="number" name="total"
-								className="coin form-field"
-								value={state.total.toFixed(8)} step={SATOSHI}
-								min={0} onChange={handleChange}
-								disabled={state.orderType === "market"
-									&& state.buysell === "sell"} />
+							<CoinInput value={state.total}
+								dispatch={cDispatch("set_total")} step={SATOSHI} />
 						</td>
 					</tr>
 					<tr style={{ paddingTop: "8px" }}>
@@ -800,6 +797,54 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			</table>
 		</div>
 	</>;
+};
+
+type CoinInputProps = {
+	value: number,
+	dispatch: (v: any) => void,
+	step: number,
+	digits?: number,
+	disabled?: boolean,
+};
+
+const C = {
+	CoinInput: {
+		Container: styled.div`
+	display: flex;
+	flex-direction: row;
+	`,
+		ButtonsContainer: styled.div`
+	display: flex;
+	flex-direction: column;
+	width: 21px;
+	height: 21px;
+	
+	& > button {
+		flex: 1;
+		padding: 0;
+		font-size: 5pt;
+		height: 50%;
+	}
+	`
+	}
+}
+
+const CoinInput = ({ value, dispatch, step, digits = 8,
+	disabled = false }: CoinInputProps) => {
+	const handleChange = React.useCallback((values: NumberFormatValues) =>
+		dispatch(values.floatValue), [dispatch]);
+
+	return <C.CoinInput.Container>
+		<NumberFormat value={value} onValueChange={handleChange}
+			className="coin form-field" decimalScale={digits}
+			allowLeadingZeros={false} fixedDecimalScale={true}
+			allowNegative={false} disabled={disabled} />
+		<C.CoinInput.ButtonsContainer>
+			<button onClick={() => dispatch(value + step)}>{UP_SYMBOL}</button>
+			<button disabled={value - step < 0} onClick={() =>
+				dispatch(value - step)}>{DOWN_SYMBOL}</button>
+		</C.CoinInput.ButtonsContainer>
+	</C.CoinInput.Container>;
 };
 
 const Trade = () => {

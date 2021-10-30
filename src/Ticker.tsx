@@ -42,14 +42,14 @@ const TickerMarquee = () => {
 	let tickerList = [
 		<TickerElement prefix={`FTC/USD: `}
 			price={getPrice(FTCRates, "USD", 4)} key={uniqueId("ticker-")} />,
-			<TickerElement prefix={`FTC/EUR: `}
+		<TickerElement prefix={`FTC/EUR: `}
 			price={getPrice(FTCRates, "EUR", 4)} key={uniqueId("ticker-")} />,
 		<TickerElement prefix={`FTC/BTC: `}
 			price={getPrice(FTCRates, "BTC", 8).replace(/BTC/, BITCOIN_SYMBOL)}
 			key={uniqueId("ticker-")} />,
 		<TickerElement prefix={`BTC/USD: `}
 			price={getPrice(BTCRates, "USD")} key={uniqueId("ticker-")} />,
-			<TickerElement prefix={`BTC/EUR: `}
+		<TickerElement prefix={`BTC/EUR: `}
 			price={getPrice(BTCRates, "EUR")} key={uniqueId("ticker-")} />,
 	];
 
@@ -58,9 +58,25 @@ const TickerMarquee = () => {
 	</div>;
 };
 
+const Height = () => {
+	const { settings, getClient } = React.useContext(AppContext);
+
+	const [height, setHeight] = React.useState(0);
+
+	useInterval(async () => {
+		const API = api(getClient());
+		setHeight(await repeatAsync(API.getBlockchainInfo, 5)().then(v =>
+			v.blocks, _ => 0));
+	}, 5000, true);
+
+	return <div style={{ fontSize: "10pt" }}>Blockchain Height:&nbsp;
+	{toFormattedAmount(height, settings.numformat, 0, "decimal", "none", true)}</div>
+}
+
 const Ticker = () => {
 	return <div className="ticker-table">
 		<Clock prefix="Local Time: " />
+		<Height />
 		<TickerMarquee />
 	</div>;
 };

@@ -7,9 +7,7 @@ import api from './api';
 import Table from './Table';
 import AssetSearch from './AssetSearch';
 
-import {
-	handlePromise, handleError, repeatAsync, toFormattedAmount, openLink
-} from './util';
+import { handleError, repeatAsync, toFormattedAmount, sendOpenLink } from './util';
 
 type NFTTableProps = {
 	data: NFTInfo[],
@@ -34,10 +32,10 @@ const NFTTable = ({ data }: NFTTableProps) => {
 			Cell: (props: Record<string, any>) =>
 				urlRegex({ exact: true }).test(props.value) ?
 					((/\.(gif|jpe?g|tiff?|png|webp|bmp)$/i).test(props.value) ?
-						<a href="#" onClick={() => openLink(props.value)}>
+						<a href="#" onClick={() => sendOpenLink(props.value)}>
 							<img src={props.value} width="100%" />
 						</a> :
-						<a href="#" onClick={() => openLink(props.value)}></a>)
+						<a href="#" onClick={() => sendOpenLink(props.value)}></a>)
 					: props.value,
 		},
 		{
@@ -101,7 +99,7 @@ const Info = () => {
 					<tr>
 						<td>URL:</td>
 						<td>{info.url.length > 0 ?
-							<a href="#" onClick={() => openLink(info.url)}>
+							<a href="#" onClick={() => sendOpenLink(info.url)}>
 								{info.url}</a> : "none"}</td>
 					</tr>
 					<tr>

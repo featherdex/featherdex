@@ -8,6 +8,7 @@ import { Line } from 'rc-progress';
 import AppContext from './contexts/AppContext';
 
 import { downloadFile, roundn, uniqueId, promiseStatus } from './util';
+import { X_SYMBOL } from './constants';
 
 type DownloadInfoProps = {
 	id: string,
@@ -89,7 +90,7 @@ const DownloadInfo = ({ id, url, path, down, total, pct, closeDownload, status }
 			</div>
 		</C.DownloadInfo.Body>
 		<C.DownloadInfo.X onClick={() =>
-			closeDownload(id)}>&#x2715;</C.DownloadInfo.X>
+			closeDownload(id)}>{X_SYMBOL}</C.DownloadInfo.X>
 	</C.DownloadInfo.Container>;
 };
 

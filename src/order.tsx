@@ -26,6 +26,7 @@ export default class Order implements Cancellable {
 	waitTXs = [] as string[];
 	time = 0 as UTCTimestamp;
 	finaltx: string = null;
+	finaltxid: string = null;
 	finalizing = false;
 
 	constructor(client: typeof Client, buysell: "buy" | "sell",
@@ -80,7 +81,9 @@ export default class Order implements Cancellable {
 		const sendtx = await sendTx(this.client, this.finaltx, "Could not send final"
 			+ ` ${this.buysell} transaction`);
 		if (sendtx === null) return this.finish(false);
-		
+
+		this.finaltxid = sendtx;
+
 		this.finalizing = true;
 
 		// If the order has been cancelled, poll returns false
@@ -92,7 +95,7 @@ export default class Order implements Cancellable {
 	data = (): Data => {
 		return {
 			cancel: <a href="#" onClick={this.cancel}>Cancel</a>,
-			time: this.time,
+			time: { time: this.time, txid: this.finaltxid },
 			status: this.status,
 			idBuy: this.buysell === "buy" ? this.id : 1,
 			idSell: this.buysell === "sell" ? this.id : 1,

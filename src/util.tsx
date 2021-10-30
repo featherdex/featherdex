@@ -28,7 +28,7 @@ import { defaultLayout, defaultRPCSettings, defaultSettings } from './defaults';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, ipcRenderer } from 'electron';
 
 let lastId = 0;
 const rootPath = getAppDataPath(APP_NAME);
@@ -77,6 +77,10 @@ export async function promiseStatus(p: Promise<unknown>):
 	const uniqueVal = uniqueId("promiseStatus-");
 	return Promise.race([p, uniqueVal]).then(v =>
 		v === uniqueVal ? "pending" : "fulfilled", () => "rejected");
+}
+
+export function sendOpenLink(url: string) {
+	ipcRenderer.send("shell:openlink", url);
 }
 
 export function downloadFile(url: string, path: string,
@@ -823,10 +827,6 @@ export function createWindow(page: string, width = 1280, height = 800,
 
 	return win;
 };
-
-export function openLink(url: string) {
-	shell.openExternal(url);
-}
 
 export function notify(type: ReactNotificationOptions['type'],
 	title: string, message: string) {

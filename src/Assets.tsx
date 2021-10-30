@@ -212,7 +212,7 @@ const Assets = () => {
 			const chg = dayClose ? last - dayClose : 0;
 
 			assetData.push({
-				asset: asset.name,
+				asset: `(${asset.propertyid}) ${asset.name}`,
 				quantity: balance,
 				value: last * balance,
 				last: last,

@@ -8,7 +8,6 @@ import Client from 'bitcoin-core';
 import ReactNotification from 'react-notifications-component';
 import createRBTree from 'functional-red-black-tree';
 import isEqual from 'lodash/fp/isEqual';
-import path from 'path';
 
 import { ipcRenderer } from 'electron';
 import { Tree } from 'functional-red-black-tree';
@@ -30,12 +29,13 @@ import AppContext from './contexts/AppContext';
 
 import { PROPID_BITCOIN, PROPID_FEATHERCOIN } from './constants';
 
-import { writeLayout, createWindow } from './util';
+import { writeLayout } from './util';
 import {
 	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf,
-	isNumber, isBoolean, parseBoolean, handlePromise, handleError, log, Queue
+	isNumber, isBoolean, parseBoolean, handlePromise, log, Queue
 } from './util';
 
+import 'react-contexify/dist/ReactContexify.css';
 import 'react-notifications-component/dist/theme.css'
 import 'flexlayout-react/style/dark.css';
 import './app.css';
@@ -74,7 +74,6 @@ class App extends React.PureComponent<AppProps, AppState> {
 	genAsset: ReturnType<typeof setTimeout>;
 	clearStale: ReturnType<typeof setTimeout>;
 
-	assetList: PropertyList = [];
 	client: typeof Client;
 	pendingDownloads = new Queue<DownloadOpts>();
 	pendingOrders: Order[] = [];
@@ -183,12 +182,15 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 		const API = api(this.client);
 
-		this.assetList = await handlePromise(repeatAsync(API.listProperties, 3)(),
-			"Could not list properties for asset list generation", data => {
-				const arr = proplist.concat(data.slice(2).map(x =>
-					({ id: x.propertyid, name: `${x.propertyid}: ${x.name}` })));
-				if (!isEqual(arr, this.assetList)) return arr;
-			}) || this.assetList;
+		const list = await handlePromise(repeatAsync(API.listProperties, 3)(),
+			"Could not list properties for asset list generation", data =>
+			proplist.concat(data.slice(2).map(x =>
+				({ id: x.propertyid, name: `${x.propertyid}: ${x.name}` }))));
+		if (list === null) return;
+
+		this.setState(oldState => {
+			if (!isEqual(list, oldState.assetList)) return { assetList: list };
+		});
 	}
 
 	factory = (node: TabNode) => {
@@ -196,10 +198,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 		const panel = (el: JSX.Element, style: Record<string, any> = {}) =>
 			<div className="panel" style={style}>
-				<AppContext.Provider value={{
-					...this.state, ...this.methods,
-					assetList: this.assetList,
-				}}>
+				<AppContext.Provider value={{ ...this.state, ...this.methods }}>
 					{el}
 				</AppContext.Provider>
 			</div>;
@@ -302,10 +301,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 	closeAbout = () => this.setState({ aOpen: false });
 
 	render() {
-		return <AppContext.Provider value={{
-			...this.state, ...this.methods,
-			assetList: this.assetList,
-		}}>
+		return <AppContext.Provider value={{ ...this.state, ...this.methods }}>
 			<Layout
 				ref={this.state.layoutRef}
 				model={this.state.layout}
