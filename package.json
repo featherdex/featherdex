@@ -1,7 +1,7 @@
 {
 	"name": "featherdex",
 	"main": "./build/index.js",
-	"version": "0.0.5a",
+	"version": "0.0.6a",
 	"description": "FeatherDeX Trader",
 	"author": "",
 	"nodejs": true,

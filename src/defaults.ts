@@ -145,7 +145,7 @@ export const defaultRPCSettings: RPCSettings = {
 
 export const defaultSettings: Settings = {
 	dconfpath: process.platform === "linux" ?
-		path.resolve(os.homedir(), '.feathercoin') :
+		path.resolve(os.homedir(), '.feathercoin', FCONF_NAME) :
 		path.resolve(getAppDataPath('Feathercoin'), FCONF_NAME),
 	numformat: US_NUMF,
 	apikey: "",
