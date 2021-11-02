@@ -26,6 +26,8 @@ If your wallet is not in a standard location, you will have to open the settings
 
 Once you have started the client and it is up to date, you may start the application. To use any trade functionality, you must unlock the wallet! If you're getting errors about not being able to sign or send transactions, it's most likely that your wallet has been locked.
 
+Note: If you intend to change the wallet file during operation, please shutdown this application before changing the wallet file.
+
 ## How to Build
 
 Must have Node.js, preferably v14 LTS. I prefer using `nvm`, the Node Version Manager. You can get it at https://github.com/nvm-sh/nvm. Please follow its instructions.
