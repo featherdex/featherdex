@@ -3,6 +3,7 @@
 import React from 'react';
 import useInterval from 'use-interval';
 
+import { ipcRenderer } from 'electron';
 import { Column } from 'react-table';
 import { DateTime } from 'luxon';
 import { UTCTimestamp } from 'lightweight-charts';
@@ -46,9 +47,7 @@ const Orders = () => {
 	const [active, setActive] = React.useState<string[]>([]);
 	const cancelledOrders = React.useMemo(() => new Queue<string>(), []);
 
-	const { show } = useContextMenu({
-		id: "orders-time",
-	});
+	const { show } = useContextMenu();
 
 	const myTradesCache = useTimeCache((ts, te) => {
 		const client = getClient();
@@ -57,7 +56,7 @@ const Orders = () => {
 
 	const onContextMenu = (event: React.MouseEvent<HTMLSpanElement, MouseEvent>) => {
 		event.preventDefault();
-		show(event);
+		show(event, { id: event.currentTarget.id });
 	}
 
 	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
@@ -74,22 +73,40 @@ const Orders = () => {
 				if (!props.value) return "";
 
 				const v = props.value;
-				return <>
-					<span {...(v.txid ? { title: v.txid, onContextMenu } : {})}>
-						{v.time ? DateTime.fromSeconds(v.time).toISO().replace("T",
-							" ").slice(0, -10) + " UTC" : ""}</span>
-					{!!v.txid && <Menu id="history-time" theme={theme.dark}
-						animation={false}>
-						<Item onClick={() =>
-							sendOpenLink(`${OMNI_EXPLORER_ENDPOINT}/tx/${v.txid}`)}>
-							Open in Omnifeather Explorer...
-						</Item>
-						<Item onClick={() =>
-							sendOpenLink(`${COIN_EXPLORER_ENDPOINT}/tx/${v.txid}`)}>
-							Open in Feathercoin Explorer...
-						</Item>
-					</Menu>}
-				</>;
+				const time = v.time ?
+					DateTime.fromSeconds(v.time).toISO().replace("T",
+						" ").slice(0, -10) + " UTC" : "";
+
+				if (!v.txid) return <span>{time}</span>;
+				else {
+					const onOmni = () =>
+						sendOpenLink(`${OMNI_EXPLORER_ENDPOINT}/tx/${v.txid}`);
+					const onFeather = () =>
+						sendOpenLink(`${COIN_EXPLORER_ENDPOINT}/tx/${v.txid}`);
+
+					return <>
+						<span id={`orders-time-${v.txid}`} title={v.txid}
+							onContextMenu={onContextMenu}>
+							{time}
+						</span>
+						<Menu id={`orders-time-${v.txid}`} theme={theme.dark}
+							animation={false}>
+							<Item onClick={() => {
+								ipcRenderer.send("clipboard:copy", v.txid);
+								notify("success", "Copied txid to clipboard",
+									`Copied ${v.txid} to clipboard`);
+							}}>
+								Copy Transaction ID to clipboard...
+							</Item>
+							<Item onClick={onOmni}>
+								Open in Omnifeather Explorer...
+							</Item>
+							<Item onClick={onFeather}>
+								Open in Feathercoin Explorer...
+							</Item>
+						</Menu>
+					</>;
+				}
 			},
 		},
 		{

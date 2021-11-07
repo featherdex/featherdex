@@ -344,7 +344,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			}
 
 			const tradeFee = await
-				estimateBuyFee(client, fillOrders.length).catch(e => {
+				estimateBuyFee(client, fillOrders).catch(e => {
 					handleError(e, "error");
 					return null;
 				}) as Awaited<ReturnType<typeof estimateBuyFee>>;
@@ -410,7 +410,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 			log.debug("send accepts loop")
 			// Send all accepts
-			let acceptedOrders: typeof fillOrders = [];
+			let acceptedOrders = [] as FillOrder[];
 			for (let i of fillOrders) {
 				log.debug("fillOrder")
 				log.debug(i)
@@ -420,8 +420,9 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 				log.debug("createRawAccept")
 
+				const acceptFee = tradeFee.acceptFees.get(i.address);
 				const accept = await createRawAccept(client, i.address, state.trade,
-					i.quantity, utxo, tradeFee.acceptFee).catch(e => {
+					i.quantity, utxo, acceptFee).catch(e => {
 						handleError(e, "error");
 						handleError(new Error(skipErrorMsg), "warn");
 						return null;
@@ -444,7 +445,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 				// Make the new UTXO the output of the completed transaction
 				utxo = toUTXO(sendtx, 0, utxo.address,
-					roundn(utxo.amount - MIN_CHANGE - tradeFee.acceptFee, 8));
+					roundn(utxo.amount - MIN_CHANGE - acceptFee, 8));
 
 				log.debug("new utxo")
 				log.debug(utxo)

@@ -426,15 +426,20 @@ export async function estimateTxFee(client: typeof Client,
 	return Math.ceil(vsize / 1000.0 * fee * (1 / SATOSHI)) * SATOSHI;
 }
 
-export async function estimateBuyFee(client: typeof Client, orderct: number) {
-	let acceptFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
+export async function estimateBuyFee(client: typeof Client, orders: FillOrder[]) {
+	let defaultAcceptFee = await estimateTxFee(client, "",
+		EMPTY_TX_VSIZE + TX_I_VSIZE
 		+ 2 * TX_O_VSIZE + OPRETURN_ACCEPT_VSIZE);
 	let payFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
-		+ (orderct + 1) * TX_O_VSIZE);
+		+ (orders.length + 1) * TX_O_VSIZE);
+
+	let acceptFees = orders.reduce((map, v) =>
+		map.set(v.address, Math.max(defaultAcceptFee, v.minFee)),
+		new Map<string, number>());
 
 	return {
-		acceptFee, payFee,
-		totalFee: roundn(orderct * acceptFee + payFee
+		acceptFees, payFee,
+		totalFee: roundn(sum([...acceptFees.values()]) + payFee
 			+ EXODUS_CHANGE + MIN_CHANGE, 8)
 	};
 }
@@ -625,9 +630,7 @@ export async function getFillOrders(client: typeof Client, propid: number,
 	log.debug("pendingCancels")
 	log.debug(pendingCancels)
 
-	let fillOrders: {
-		address: string, quantity: number, payAmount: number,
-	}[] = [];
+	let fillOrders = [] as FillOrder[];
 	let fillRemaining = quantity;
 
 	log.debug("fill order loop")
@@ -651,6 +654,7 @@ export async function getFillOrders(client: typeof Client, propid: number,
 				address: i.seller,
 				quantity: fillRemaining,
 				payAmount: roundn(fillRemaining * price, 8),
+				minFee: parseFloat(i.minimumfee),
 			});
 			break;
 		}
@@ -659,6 +663,7 @@ export async function getFillOrders(client: typeof Client, propid: number,
 			address: i.seller,
 			quantity: orderAmount,
 			payAmount: roundn(orderAmount * price, 8),
+			minFee: parseFloat(i.minimumfee),
 		});
 		fillRemaining -= orderAmount;
 	}

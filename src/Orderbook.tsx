@@ -136,15 +136,13 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 						}) as Awaited<ReturnType<typeof getFillOrders>>;
 					if (fillOrders === null) return;
 
-					const orderct = fillOrders.length;
-
-					if (orderct === 0) {
+					if (fillOrders.length === 0) {
 						dispatch({ type: "set_fee", payload: postFee });
 						return;
 					}
 
-					estFee = await
-						estimateBuyFee(client, orderct).then(v => v.totalFee, e => {
+					estFee = await estimateBuyFee(client, fillOrders).then(v =>
+						v.totalFee, e => {
 							handleError(e, "error");
 							return null;
 						});

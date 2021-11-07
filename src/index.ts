@@ -1,6 +1,6 @@
 import {
 	ipcMain, app, BrowserWindow, Menu, MenuItemConstructorOptions, dialog, shell,
-	OpenDialogOptions
+	clipboard, OpenDialogOptions
 } from 'electron';
 
 import { createWindow } from './util';
@@ -154,13 +154,10 @@ app.whenReady().then(() => {
 	})
 });
 
-ipcMain.on("shell:opencont", (_, pathfile) => {
-	shell.showItemInFolder(pathfile);
-});
+ipcMain.on("clipboard:copy", (_, text) => clipboard.writeText(text));
 
-ipcMain.on("shell:openlink", (_, url) => {
-	shell.openExternal(url);
-});
+ipcMain.on("shell:opencont", (_, pathfile) => shell.showItemInFolder(pathfile));
+ipcMain.on("shell:openlink", (_, url) => shell.openExternal(url));
 
 ipcMain.on("app_quit", () => {
 	if (!isMac) app.quit();

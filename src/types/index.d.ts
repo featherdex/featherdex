@@ -129,6 +129,13 @@ declare type Purchase = {
 	valid: boolean,
 }
 
+declare type FillOrder = {
+	address: string, 
+	quantity: number, 
+	payAmount: number,
+	minFee: number,
+}
+
 declare type RawTxBlueprint = {
 	ins: { txid: string, vout: number, sequence?: number }[],
 	outs: ({ [address: string]: number } | { data: string })[],
