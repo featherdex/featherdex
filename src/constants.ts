@@ -11,7 +11,7 @@ export const IN_NUMF = "en-IN";
 export const FR_NUMF = "fr-FR";
 
 export const OMNI_VERSION = 1;
-export const VERSION_STRING = "v0.1.0a";
+export const VERSION_STRING = "v0.2.0a";
 export const ACCOUNT_LABEL = "featherdex";
 
 export const TYPE_SIMPLE_SEND = 0;
