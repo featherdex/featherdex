@@ -130,8 +130,8 @@ declare type Purchase = {
 }
 
 declare type FillOrder = {
-	address: string, 
-	quantity: number, 
+	address: string,
+	quantity: number,
 	payAmount: number,
 	minFee: number,
 }
@@ -265,6 +265,16 @@ declare type RequestOptions = {
 	method: "GET" | "POST" | "DELETE",
 	headers: Record<string, any>,
 	body?: string,
+};
+
+declare type Ticker = {
+	market: string,
+	last: number,
+	chg: number,
+	chgp: number,
+	bid: number,
+	ask: number,
+	vol: number,
 };
 
 declare type BittrexErrorType = {

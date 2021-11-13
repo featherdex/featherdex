@@ -84,4 +84,80 @@ const useTimeCache = <T>(requestCallback: (timeStart: number,
 	return { state, refresh };
 };
 
+export class TimeCache<T> {
+	requestCallback;
+	timeifierCallback;
+	data: T[] = [];
+	timeLast = { start: -1, end: -1 };
+	mutex;
+
+	constructor(requestCallback: (timeStart: number,
+		timeEnd: number) => Promise<T[]>, timeifierCallback: (t: T) => number) {
+		this.requestCallback = requestCallback;
+		this.timeifierCallback = timeifierCallback;
+		this.mutex = new Mutex();
+	}
+
+	refresh = async (timeStart: number, timeEnd: number,
+		pruneCondition = (_: T) => false): Promise<T[]> => {
+		const release = await this.mutex.acquire();
+
+		if (timeStart < 0 || timeStart < 0 || timeStart > timeEnd) {
+			release();
+			throw new Error("TimeCache.refresh(): Invalid times "
+				+ `timeStart=${timeStart}, timeEnd=${timeEnd}`);
+		}
+
+		let trimData = this.data;
+
+		if (trimData.length > 0)
+			trimData = trimData.filter(v => {
+				const t = this.timeifierCallback(v);
+				return t >= timeStart && t <= timeEnd && !pruneCondition(v);
+			});
+
+		let newData: T[] = [];
+
+		if (timeStart < this.timeLast.start) {
+			const req: T[] = await repeatAsync(this.requestCallback, 5)(timeStart,
+				Math.min(timeEnd, Math.max(this.timeLast.start - 1, timeStart)))
+				.catch(e => {
+					handleError(e, "error");
+					return null;
+				});
+
+			if (req === null) {
+				release();
+				return this.data;
+			}
+
+			newData.push(...req);
+		}
+
+		newData.push(...trimData);
+
+		if (timeEnd > this.timeLast.end) {
+			const req: T[] = await repeatAsync(this.requestCallback, 5)
+				(Math.max(Math.min(this.timeLast.end + 1, timeEnd), timeStart),
+					timeEnd).catch(e => {
+						handleError(e, "error");
+						return null;
+					});
+
+			if (req === null) {
+				release();
+				return this.data;
+			}
+
+			newData.push(...req);
+		}
+
+		this.data = [...newData];
+		this.timeLast = { start: timeStart, end: timeEnd };
+		
+		release();
+		return newData;
+	}
+};
+
 export default useTimeCache;

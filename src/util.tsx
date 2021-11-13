@@ -800,6 +800,7 @@ export function handlePromise<T, V extends unknown>
 export function handleError(err: Error, level = "log") {
 	if (err.message === "ESOCKETTIMEDOUT"
 		|| err.message.startsWith("connect ECONNREFUSED")
+		|| err.message === "Loading block index..."
 		|| err.message === "no auth mechanism defined") level = "warn";
 
 	const flog = level === "fatal" ?

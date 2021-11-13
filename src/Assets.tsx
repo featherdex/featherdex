@@ -4,18 +4,13 @@ import React from 'react';
 import useInterval from 'use-interval';
 
 import { Column } from 'react-table';
-import { DateTime, Duration } from 'luxon';
-import { UTCTimestamp } from 'lightweight-charts';
 
 import AppContext from './contexts/AppContext';
 import Table from './Table';
 import api from './api';
-import useTimeCache from './timecache';
 
-import { OMNI_START_TIME } from './constants';
-import {
-	handleError, toFormattedAmount, toCandle, tradeToLineData, isBarData, roundn
-} from './util';
+import { PROPID_FEATHERCOIN } from './constants';
+import { handlePromise, repeatAsync, toFormattedAmount } from './util';
 
 type Data = {
 	asset: string,
@@ -30,17 +25,8 @@ type Data = {
 };
 
 const Assets = () => {
-	const { settings, getClient, getBlockTimes, addBlockTime
-	} = React.useContext(AppContext);
+	const { settings, getClient, tickers } = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
-	const [lasts, setLasts] = React.useState<Record<number, number>>({});
-
-	const tradesCache = useTimeCache((ts, te) => {
-		const client = getClient();
-		return !!client ?
-			api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp,
-				{ cache: getBlockTimes(), push: addBlockTime }) : null
-	}, t => t.time);
 
 	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
 		{
@@ -108,20 +94,16 @@ const Assets = () => {
 	);
 
 	const refreshData = async () => {
+		if (!tickers || !tickers.get(PROPID_FEATHERCOIN)) return;
+
 		const emptyTickerData = {
 			last: 0, chg: 0, chgp: 0, bid: 0, ask: 0, vol: 0
 		};
 
 		const API = api(getClient());
-		const now = DateTime.now().toUTC();
-		const yesterday = now.minus({ days: 1 }).startOf("day");
+		const tickerData = tickers.get(PROPID_FEATHERCOIN);
 
-		const tickerData = await API.getCoinTicker().catch(err => {
-			handleError(err, "error");
-			return emptyTickerData;
-		});
-
-		var assetData = [];
+		let assetData: Data[] = [];
 
 		// Bittrex data if available
 		if (settings.apikey.length > 0 && settings.apisecret.length > 0) {
@@ -149,10 +131,10 @@ const Assets = () => {
 		}
 
 		// FTC in wallet data
-		const quant = await API.getCoinBalance().catch((err: Error) => {
-			handleError(err);
-			return 0;
-		});
+		const quant = await handlePromise(repeatAsync(API.getCoinBalance, 5)(),
+			"Could not get Feathercoin balance");
+		if (quant === null) return;
+
 		const FTCData = {
 			asset: "FTC (wallet)",
 			quantity: quant,
@@ -162,74 +144,27 @@ const Assets = () => {
 
 		assetData.push(FTCData);
 
-		const assets = await API.getWalletAssets()
-			.catch(e => {
-				handleError(e, "error");
-				return null as AssetBalance[];
-			});
+		const assets = await handlePromise(repeatAsync(API.getWalletAssets, 3)(),
+			"Could not get wallet asset balances");
+		if (assets === null) return;
 
-		// if the api call failed just update coin data only
-		if (!assets && data.length !== 0) {
-			assetData = Array.from(data);
-			assetData[0] = FTCData;
-			setData(assetData);
-			return;
-		}
-
-		const dexsells = await API.getExchangeSells().catch((e): DexSell[] => {
-			handleError(e);
-			return [];
-		});
-
-		const allTrades: AssetTrade[] = await tradesCache.refresh(OMNI_START_TIME,
-			Math.floor(now.toSeconds()));
-
-		for (var asset of assets) {
+		for (let asset of assets) {
 			const balance = parseFloat(asset.balance);
-			const propid = asset.propertyid;
-
-			const trades = allTrades.filter(v =>
-				v.idBuy === propid).sort((a, b) => b.time - a.time);
-
-			let last = lasts[propid]; // use cache
-			if (last === undefined) last = 0; // if cache fails use default value
-
-			if (trades.length > 0) {
-				let lastTrade = trades[0];
-				last = roundn(lastTrade.amount / lastTrade.quantity, 8);
-				setLasts({ ...lasts, [propid]: last });
-			}
-
-			const asks = dexsells.filter(v =>
-				parseInt(v.propertyid) === propid).map(v => parseFloat(v.unitprice));
-
-			const dayCandles = toCandle(trades.filter(v =>
-				v.time < yesterday.plus({ days: 1 }).toSeconds())
-				.map(tradeToLineData),
-				Duration.fromObject({ days: 1 }).as('seconds'));
-			const dayClose = dayCandles.length > 0 && isBarData(dayCandles[0]) ?
-				dayCandles[0].close : null;
-			const chg = dayClose ? last - dayClose : 0;
+			const assetTicker = tickers.get(asset.propertyid) || emptyTickerData;
 
 			assetData.push({
 				asset: `(${asset.propertyid}) ${asset.name}`,
 				quantity: balance,
-				value: last * balance,
-				last: last,
-				chg: chg,
-				chgp: dayClose ? chg / dayClose : 0,
-				bid: 0,
-				ask: asks.length !== 0 ? Math.min(...asks) : 0,
-				vol: trades.filter(v => v.time >= now.minus({ days: 1 }).toSeconds())
-					.map(v => v.amount).reduce((pv, v) => pv + v, 0)
+				value: assetTicker.last * balance,
+				...assetTicker,
 			});
 		}
 
 		setData(assetData);
 	}
 
-	React.useEffect(() => { refreshData(); }, []);
-	useInterval(refreshData, 2000);
+	React.useEffect(() => { refreshData(); }, [tickers]);
+	useInterval(refreshData, 5000);
 
 	return <Table className="assets-table" columns={columns} data={data} />;
 };

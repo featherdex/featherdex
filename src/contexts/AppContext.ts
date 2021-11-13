@@ -9,6 +9,7 @@ const AppContext =
 	React.createContext<AppState & AppMethods>({
 		layoutRef: null,
 		layout: null,
+		tickers: new Map<number, Ticker>(),
 		assetList: [],
 		getClient: null,
 		settings: defaultSettings,

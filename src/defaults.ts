@@ -48,14 +48,20 @@ export const defaultLayout = {
 											{
 												"type": "tab",
 												"id": "#1010",
-												"name": "Terminal",
-												"component": "terminal"
+												"name": "Top Markets",
+												"component": "markets"
 											},
 											{
 												"type": "tab",
 												"id": "#1011",
 												"name": "Info",
 												"component": "info"
+											},
+											{
+												"type": "tab",
+												"id": "#1012",
+												"name": "Terminal",
+												"component": "terminal"
 											}
 										]
 									}

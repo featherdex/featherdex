@@ -107,6 +107,11 @@ app.whenReady().then(() => {
 					label: "Ticker",
 					click: () => win.webContents.send("add:tab",
 						{ title: "Ticker", component: "ticker" }),
+				},
+				{
+					label: "Top Markets",
+					click: () => win.webContents.send("add:tab",
+						{ title: "Top Markets", component: "markets" }),
 				}]
 			},
 			{ role: 'reload' },

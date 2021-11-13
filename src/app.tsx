@@ -10,6 +10,8 @@ import createRBTree from 'functional-red-black-tree';
 import isEqual from 'lodash/fp/isEqual';
 
 import { ipcRenderer } from 'electron';
+import { DateTime, Duration } from 'luxon';
+import { UTCTimestamp } from 'lightweight-charts';
 import { Tree } from 'functional-red-black-tree';
 import { Layout, Model, TabNode } from 'flexlayout-react';
 
@@ -25,14 +27,15 @@ import History from './History';
 import Orders from './Orders';
 import Info from './Info';
 import Ticker from './Ticker';
+import Markets from './Markets';
+import { TimeCache } from './timecache';
 import AppContext from './contexts/AppContext';
 
-import { PROPID_BITCOIN, PROPID_FEATHERCOIN } from './constants';
-
-import { writeLayout } from './util';
+import { PROPID_BITCOIN, PROPID_FEATHERCOIN, OMNI_START_TIME } from './constants';
 import {
-	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf,
-	isNumber, isBoolean, parseBoolean, handlePromise, log, Queue
+	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf, writeLayout,
+	isNumber, isBoolean, parseBoolean, handlePromise, log, Queue, roundn, toCandle,
+	isBarData, tradeToLineData,
 } from './util';
 
 import 'react-contexify/dist/ReactContexify.css';
@@ -50,6 +53,7 @@ export type AppState = {
 	layoutRef: React.RefObject<Layout>,
 	layout: Model,
 	settings: Settings,
+	tickers: Map<number, Ticker>,
 	assetList: PropertyList,
 	pendingDownloads: DownloadOpts[],
 	dOpen: boolean,
@@ -72,12 +76,20 @@ export type AppMethods = {
 
 class App extends React.PureComponent<AppProps, AppState> {
 	genAsset: ReturnType<typeof setTimeout>;
+	updateTicker: ReturnType<typeof setTimeout>;
 	clearStale: ReturnType<typeof setTimeout>;
 
 	client: typeof Client;
 	pendingDownloads = new Queue<DownloadOpts>();
 	pendingOrders: Order[] = [];
-	blockTimes: Tree<number, number> = createRBTree<number, number>();
+	blockTimes = createRBTree<number, number>();
+	tickers = new Map<number, Ticker>();
+	tradesCache = new TimeCache((ts, te) => {
+		const client = this.getClient();
+		return !!client ?
+			api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp,
+				{ cache: this.getBlockTimes(), push: this.addBlockTime }) : null
+	}, t => t.time);
 
 	methods: AppMethods;
 
@@ -124,6 +136,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 			layoutRef: React.createRef(),
 			layout: this.props.model,
 			settings: this.props.initSettings,
+			tickers: new Map<number, Ticker>(),
 			assetList: [],
 			pendingDownloads: [],
 			dOpen: false,
@@ -132,7 +145,10 @@ class App extends React.PureComponent<AppProps, AppState> {
 		};
 
 		this.genAssetList();
+		this.updateTickers();
+
 		this.genAsset = setInterval(this.genAssetList, 60 * 1000);
+		this.updateTicker = setInterval(this.updateTickers, 2000);
 		this.clearStale = setInterval(this.clearStaleOrders, 1000);
 	}
 
@@ -167,18 +183,83 @@ class App extends React.PureComponent<AppProps, AppState> {
 			this.pendingOrders = [...arr];
 	}
 
+	updateTickers = async () => {
+		if (!this.client) return;
+
+		const API = api(this.client);
+		const now = DateTime.now().toUTC();
+		const yesterday = now.minus({ days: 1 }).startOf("day");
+
+		let tickerData = await handlePromise(repeatAsync(API.getCoinTicker, 5)(),
+			"Could not get Feathercoin ticker data");
+		if (tickerData === null) return;
+
+		let marketData = new Map<number, Ticker>([[1,
+			{ market: "FTC/BTC", ...tickerData }]]);
+
+		const dexsells = await handlePromise(repeatAsync(API.getExchangeSells, 3)(),
+			"Could not get open exchange orders");
+		if (dexsells === null) return;
+
+		const allTrades: AssetTrade[] = await
+			this.tradesCache.refresh(OMNI_START_TIME, Math.floor(now.toSeconds()));
+
+		for (let asset of this.state.assetList) {
+			const propid = asset.id;
+			if (propid < 2) continue;
+
+			const trades = allTrades.filter(v =>
+				v.idBuy === propid).sort((a, b) => b.time - a.time);
+
+			let last = 0;
+
+			if (trades.length > 0) {
+				let lastTrade = trades[0];
+				last = roundn(lastTrade.amount / lastTrade.quantity, 8);
+			}
+
+			if (last === 0) continue; // Empty market
+
+			const asks = dexsells.filter(v =>
+				parseInt(v.propertyid) === propid).map(v => parseFloat(v.unitprice));
+
+			const dayCandles = toCandle(trades.filter(v =>
+				v.time < yesterday.plus({ days: 1 }).toSeconds())
+				.map(tradeToLineData),
+				Duration.fromObject({ days: 1 }).as('seconds'));
+			const dayClose = dayCandles.length > 0 && isBarData(dayCandles[0]) ?
+				dayCandles[0].close : null;
+			const chg = dayClose ? last - dayClose : 0;
+
+			marketData.set(asset.id, {
+				market: asset.name,
+				last: last,
+				chg: chg,
+				chgp: dayClose ? chg / dayClose : 0,
+				bid: 0,
+				ask: asks.length !== 0 ? Math.min(...asks) : 0,
+				vol: trades.filter(v => v.time >= now.minus({ days: 1 }).toSeconds())
+					.map(v => v.amount).reduce((pv, v) => pv + v, 0)
+			});
+		}
+
+		this.setState(oldState => {
+			if (!isEqual(oldState.tickers, marketData))
+				return { tickers: marketData };
+		});
+	}
+
 	genAssetList = async () => {
 		let proplist = [{
 			id: PROPID_BITCOIN,
-			name: `${PROPID_BITCOIN}: Bitcoin`,
+			name: `(${PROPID_BITCOIN}) Bitcoin`,
 		},
 		{
 			id: PROPID_FEATHERCOIN,
-			name: `${PROPID_FEATHERCOIN}: Feathercoin`,
+			name: `(${PROPID_FEATHERCOIN}) Feathercoin`,
 		}];
 
-		if (!this.client)
-			return proplist;
+		if (!this.client) return;
 
 		const API = api(this.client);
 
@@ -214,6 +295,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 				minWidth: "580px",
 				overflow: "auto"
 			});
+		else if (component === "markets")
+			return panel(<Markets />);
 		else if (component === "terminal")
 			return panel(<Terminal
 				color='green'
@@ -322,6 +405,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 export const appRef = React.createRef<App>();
 
 export const addTab = (title: string, component: string) => {
+	console.log(component)
 	let layoutRef = appRef.current.state.layoutRef;
 	if (layoutRef && layoutRef.current)
 		layoutRef.current.addTabToActiveTabSet({
@@ -347,7 +431,7 @@ export const addTab = (title: string, component: string) => {
 	ipcRenderer.on("open:downloads", () => appRef.current.openDownloads());
 	ipcRenderer.on("open:settings", () => appRef.current.openSettings());
 	ipcRenderer.on("open:about", () => appRef.current.openAbout());
-	ipcRenderer.on("open:tab", (_, msg) => addTab(msg.title, msg.component));
+	ipcRenderer.on("add:tab", (_, msg) => addTab(msg.title, msg.component));
 
 	window.onbeforeunload = (e: BeforeUnloadEvent) => {
 		log.debug("onbeforeunload");
