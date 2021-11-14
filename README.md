@@ -4,6 +4,8 @@ This desktop application allows you to trade on the Omnifeather decentralized ex
 
 You must have Omnifeather installed in order to use this application.
 
+![screencap](https://github.com/featherdex/featherdex/blob/main/screencap.png?raw=true)
+
 ## How to Use
 
 Before starting this application, make sure you open up your `feathercoin.conf` to add the below options. This file should be located at `C:\Users\[you]\AppData\Roaming\Feathercoin\feathercoin.conf` on Windows and `~/.feathercoin/feathercoin.conf` on Linux. If you are running the GUI, an easy way to find this file is by opening Omnifeather, then clicking Settings -> Options... -> Open Configuration File.
