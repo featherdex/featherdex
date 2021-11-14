@@ -266,7 +266,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 		const list = await handlePromise(repeatAsync(API.listProperties, 3)(),
 			"Could not list properties for asset list generation", data =>
 			proplist.concat(data.slice(2).map(x =>
-				({ id: x.propertyid, name: `${x.propertyid}: ${x.name}` }))));
+				({ id: x.propertyid, name: `(${x.propertyid}) ${x.name}` }))));
 		if (list === null) return;
 
 		this.setState(oldState => {
