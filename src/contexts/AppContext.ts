@@ -12,6 +12,7 @@ const AppContext =
 		tickers: new Map<number, Ticker>(),
 		assetList: [],
 		getClient: null,
+		getConstants: null,
 		settings: defaultSettings,
 		setSettings: null,
 		saveSettings: null,

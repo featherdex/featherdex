@@ -9,7 +9,7 @@ import AppContext from './contexts/AppContext';
 import Table from './Table';
 import api from './api';
 
-import { PROPID_FEATHERCOIN } from './constants';
+import { PROPID_COIN } from './constants';
 import { handlePromise, repeatAsync, toFormattedAmount } from './util';
 
 type Data = {
@@ -25,7 +25,9 @@ type Data = {
 };
 
 const Assets = () => {
-	const { settings, getClient, tickers } = React.useContext(AppContext);
+	const {
+		settings, getClient, getConstants, tickers
+	} = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
 
 	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
@@ -94,15 +96,16 @@ const Assets = () => {
 	);
 
 	const refreshData = async () => {
-		if (!tickers || !tickers.get(PROPID_FEATHERCOIN)) return;
+		if (!tickers || !tickers.get(PROPID_COIN)) return;
 
 		const emptyTickerData = {
 			last: 0, chg: 0, chgp: 0, bid: 0, ask: 0, vol: 0
 		};
 
 		const API = api(getClient());
-		const tickerData = tickers.get(PROPID_FEATHERCOIN);
+		const { COIN_TICKER, COIN_NAME } = getConstants();
 
+		const tickerData = tickers.get(PROPID_COIN);
 		let assetData: Data[] = [];
 
 		// Bittrex data if available
@@ -110,11 +113,11 @@ const Assets = () => {
 			const btcbal = await
 				API.getBittrexBalance(settings.apikey, settings.apisecret,
 					"BTC").then(v => v.available, _ => null);
-			const ftcbal = await
+			const coinbal = await
 				API.getBittrexBalance(settings.apikey, settings.apisecret,
-					"FTC").then(v => v.available, _ => null);
+					COIN_TICKER).then(v => v.available, _ => null);
 
-			if (btcbal && ftcbal) {
+			if (btcbal && coinbal) {
 				assetData.push({
 					asset: "BTC (Bittrex)",
 					quantity: btcbal,
@@ -122,27 +125,27 @@ const Assets = () => {
 					...emptyTickerData,
 				});
 				assetData.push({
-					asset: "FTC (Bittrex)",
-					quantity: ftcbal,
-					value: ftcbal * tickerData.last,
+					asset: `${COIN_TICKER} (Bittrex)`,
+					quantity: coinbal,
+					value: coinbal * tickerData.last,
 					...tickerData,
 				});
 			}
 		}
 
-		// FTC in wallet data
+		// coin in wallet data
 		const quant = await handlePromise(repeatAsync(API.getCoinBalance, 5)(),
-			"Could not get Feathercoin balance");
+			`Could not get ${COIN_NAME} balance`);
 		if (quant === null) return;
 
-		const FTCData = {
-			asset: "FTC (wallet)",
+		const coinData = {
+			asset: `${COIN_TICKER} (wallet)`,
 			quantity: quant,
 			value: quant * tickerData.last,
 			...(assetData.length > 0 ? emptyTickerData : tickerData),
 		};
 
-		assetData.push(FTCData);
+		assetData.push(coinData);
 
 		const assets = await handlePromise(repeatAsync(API.getWalletAssets, 3)(),
 			"Could not get wallet asset balances");

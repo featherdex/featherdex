@@ -1,7 +1,5 @@
 import React from 'react';
-import {
-	Column, useTable, useBlockLayout, useResizeColumns
-} from 'react-table';
+import { Column, useTable, useBlockLayout, useResizeColumns } from 'react-table';
 
 import { uniqueId } from './util';
 

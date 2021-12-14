@@ -5,6 +5,8 @@ import process from 'process';
 import os from 'os';
 import path from 'path';
 
+import Platforms from './platforms';
+
 import { US_NUMF, FCONF_NAME } from './constants';
 
 export const defaultLayout = {
@@ -151,8 +153,9 @@ export const defaultRPCSettings: RPCSettings = {
 
 export const defaultSettings: Settings = {
 	dconfpath: process.platform === "linux" ?
-		path.resolve(os.homedir(), '.feathercoin', FCONF_NAME) :
-		path.resolve(getAppDataPath('Feathercoin'), FCONF_NAME),
+		path.resolve(os.homedir(), Platforms.FEATHERCOIN.COIN_FOLDER_LINUX,
+			FCONF_NAME) :
+		path.resolve(getAppDataPath(Platforms.FEATHERCOIN.COIN_FOLDER), FCONF_NAME),
 	numformat: US_NUMF,
 	apikey: "",
 	apisecret: "",

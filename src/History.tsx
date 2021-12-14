@@ -15,8 +15,7 @@ import Table from './Table';
 import api from './api';
 
 import {
-	PROPID_BITCOIN, PROPID_FEATHERCOIN, OMNI_START_HEIGHT, OMNI_EXPLORER_ENDPOINT,
-	COIN_EXPLORER_ENDPOINT
+	PROPID_BITCOIN, PROPID_COIN, OMNI_EXPLORER_ENDPOINT, COIN_EXPLORER_ENDPOINT
 } from './constants';
 import {
 	handlePromise, repeatAsync, handleError, toFormattedAmount, sendOpenLink, notify
@@ -34,14 +33,15 @@ type Data = {
 };
 
 const History = () => {
-	const { settings, getClient } = React.useContext(AppContext);
+	const { settings, getClient, getConstants } = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
 
 	const { show } = useContextMenu();
 
 	const myTradesCache = useTimeCache((ts, te) => {
 		const client = getClient();
-		return !!client ? api(client).listMyAssetTrades(ts, te) : null;
+		return !!client ?
+			api(client).listMyAssetTrades(getConstants().COIN_NAME, ts, te) : null;
 	}, t => t.block);
 
 	const onContextMenu = (event: React.MouseEvent) => {
@@ -64,6 +64,8 @@ const History = () => {
 
 				if (!v.txid) return <span>{time}</span>;
 				else {
+					const { COIN_OMNI_NAME, COIN_NAME } = getConstants();
+
 					const onOmni = () =>
 						sendOpenLink(`${OMNI_EXPLORER_ENDPOINT}/tx/${v.txid}`);
 					const onFeather = () =>
@@ -84,10 +86,10 @@ const History = () => {
 								Copy Transaction ID to clipboard...
 							</Item>
 							<Item onClick={onOmni}>
-								Open in Omnifeather Explorer...
+								Open in {COIN_OMNI_NAME} Explorer...
 							</Item>
 							<Item onClick={onFeather}>
-								Open in Feathercoin Explorer...
+								Open in {COIN_NAME} Explorer...
 							</Item>
 						</Menu>
 					</>;
@@ -105,16 +107,16 @@ const History = () => {
 			accessor: 'idBuy',
 			width: 80,
 			Cell: props => props.value === PROPID_BITCOIN ? <i>BTC</i> :
-				(props.value === PROPID_FEATHERCOIN ? <i>FTC</i> :
-					<b>{props.value}</b>),
+				(props.value === PROPID_COIN ?
+					<i>{getConstants().COIN_TICKER}</i> : <b>{props.value}</b>),
 		},
 		{
 			Header: 'Asset Sell ID',
 			accessor: 'idSell',
 			width: 80,
 			Cell: props => props.value === PROPID_BITCOIN ? <i>BTC</i> :
-				(props.value === PROPID_FEATHERCOIN ? <i>FTC</i> :
-					<b>{props.value}</b>),
+				(props.value === PROPID_COIN ?
+					<i>{getConstants().COIN_TICKER}</i> : <b>{props.value}</b>),
 		},
 		{
 			Header: 'Quantity',
@@ -150,12 +152,14 @@ const History = () => {
 
 	const refreshData = async () => {
 		const API = api(getClient());
+		const { OMNI_START_HEIGHT, COIN_MARKET } = getConstants();
 
 		const blockHeight = await
 			handlePromise(repeatAsync(API.getBlockchainInfo, 5)(),
-				"Could not get blockchain info").then(v => v.blocks);
+				"Could not get blockchain info", v => v.blocks);
 
-		if (blockHeight === null) return;
+		// Second check needed for constants not updating in time
+		if (blockHeight === null || blockHeight < OMNI_START_HEIGHT) return;
 
 		let myTrades =
 			[...await myTradesCache.refresh(OMNI_START_HEIGHT, blockHeight)];
@@ -163,62 +167,50 @@ const History = () => {
 
 		const historyData: Data[] = myTrades.filter((v: AssetTrade) =>
 			v.status === "CLOSED"
-			|| v.status === "CANCELLED").map((v: AssetTrade) => {
-				return {
-					time: { time: v.time, txid: v.txid },
-					status: v.status,
-					idBuy: v.idBuy,
-					idSell: v.idSell,
-					quantity: v.quantity,
-					price: v.amount / v.quantity,
-					fee: v.fee,
-					total: v.amount + v.fee,
-				};
-			});
+			|| v.status === "CANCELLED").map((v: AssetTrade) => ({
+				time: { time: v.time, txid: v.txid },
+				status: v.status,
+				idBuy: v.idBuy,
+				idSell: v.idSell,
+				quantity: v.quantity,
+				price: v.amount / v.quantity,
+				fee: v.fee,
+				total: v.amount + v.fee,
+			}));
 
 		let bittrexData: Data[] = [];
 
 		if (settings.apikey.length > 0 && settings.apisecret.length > 0) {
-			bittrexData = (await
-				API.getBittrexHistory(settings.apikey, settings.apisecret)
-					.catch((err): BittrexOrder[] => {
-						handleError(err);
-						return [];
-					})).map(v => {
-						return {
-							time: {
-								time: Math.floor(DateTime.fromISO(v.closedAt)
-									.toSeconds()) as UTCTimestamp
-							},
-							status: v.status,
-							idBuy: v.direction === "BUY" ?
-								PROPID_FEATHERCOIN : PROPID_BITCOIN,
-							idSell: v.direction === "SELL" ?
-								PROPID_FEATHERCOIN : PROPID_BITCOIN,
-							quantity: parseFloat(v.fillQuantity),
-							price: (parseFloat(v.proceeds)
-								- parseFloat(v.commission))
-								/ parseFloat(v.fillQuantity),
-							fee: parseFloat(v.commission),
-							total: parseFloat(v.proceeds),
-						};
-					});
+			bittrexData = (await API.getBittrexHistory(settings.apikey,
+				settings.apisecret, COIN_MARKET).catch((err): BittrexOrder[] => {
+					handleError(err);
+					return [];
+				})).map(v => ({
+					time: {
+						time: Math.floor(DateTime.fromISO(v.closedAt)
+							.toSeconds()) as UTCTimestamp
+					},
+					status: v.status,
+					idBuy: v.direction === "BUY" ? PROPID_COIN : PROPID_BITCOIN,
+					idSell: v.direction === "SELL" ? PROPID_COIN : PROPID_BITCOIN,
+					quantity: parseFloat(v.fillQuantity),
+					price: (parseFloat(v.proceeds) - parseFloat(v.commission))
+						/ parseFloat(v.fillQuantity),
+					fee: parseFloat(v.commission),
+					total: parseFloat(v.proceeds),
+				}));
 		}
 
-		setData(historyData.concat(bittrexData)
-			.sort((a, b) => b.time.time - a.time.time));
+		setData(historyData.concat(bittrexData).sort((a, b) =>
+			b.time.time - a.time.time));
 	}
 
 	React.useEffect(() => { refreshData(); }, []);
 	useInterval(refreshData, 5000);
 
-	if (data && data.length > 0)
-		return <Table className="history-table"
-			columns={columns} data={data} />;
-	else
-		return <div className="empty" style={{ fontSize: 12 }}>
-			No history
-		</div>;
+	return data && data.length > 0 ?
+		<Table className="history-table" columns={columns} data={data} /> :
+		<div className="empty" style={{ fontSize: 12 }}>No history</div>;
 };
 
 export default History;

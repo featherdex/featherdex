@@ -26,7 +26,6 @@ export const BITTREX_API_ENDPOINT = "https://api.bittrex.com/v3";
 export const COINBASE_API_ENDPOINT = "https://api.coinbase.com/v2";
 export const OMNI_EXPLORER_ENDPOINT = "https://dt45325.omniexplorer.info/ftc";
 export const COIN_EXPLORER_ENDPOINT = "https://explorer.feathercoin.com";
-export const COIN_MARKET = "FTC-BTC";
 
 export const BITCOIN_SYMBOL = "\u20bf";
 export const EURO_SYMBOL = "\u20ac";
@@ -35,11 +34,8 @@ export const UP_SYMBOL = "\u25b2";
 export const DOWN_SYMBOL = "\u25bc";
 
 export const PROPID_BITCOIN = 0;
-export const PROPID_FEATHERCOIN = 1;
+export const PROPID_COIN = 1;
 
-export const GENESIS_TIME = 1366147060;
-export const OMNI_START_HEIGHT = 3454000;
-export const OMNI_START_TIME = 1607663639;
 export const SATOSHI = 0.00000001;
 export const BLOCK_TIME = 60;
 
@@ -69,7 +65,5 @@ export const MIN_TRADE_FEE = 0.008;
 export const TRADE_FEERATE = 0.001;
 export const BLOCK_WAIT = 3;
 export const PAY_BLOCK_LIMIT = 50;
-export const FEE_ADDRESS = "34sGcLqfNK83RHdNPiVjkbxRHgNPSD7kzT";
-export const EXODUS_ADDRESS = "6eXoDUSUV7yrAxKVNPEeKAHMY8San5Z37V";
 export const EXODUS_CHANGE = 0.00000546;
 export const MIN_CHANGE = 0.00000546;

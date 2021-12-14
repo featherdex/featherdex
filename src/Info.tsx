@@ -55,13 +55,14 @@ const NFTTable = ({ data }: NFTTableProps) => {
 };
 
 const Info = () => {
-	const { settings, getClient } = React.useContext(AppContext);
+	const { settings, getClient, getConstants } = React.useContext(AppContext);
 
 	const [asset, setAsset] = React.useState(-1);
 	const [assetInfo, setAssetInfo] = React.useState<AssetInfo>(null);
 	const [nftInfo, setNFTInfo] = React.useState<NFTInfo[]>([]);
 
 	const format = (info: AssetInfo) => {
+		const { COIN_LOGO_PATH } = getConstants();
 		let logo;
 
 		if (info.propertyid === 0)
@@ -74,7 +75,7 @@ const Info = () => {
 			</td>;
 		else if (info.propertyid === 1)
 			logo = <td rowSpan={10}>
-				<img src="../img/logo-ftc-256px.png"
+				<img src={COIN_LOGO_PATH}
 					style={{
 						paddingLeft: "64px",
 						width: "128px", height: "128px"
@@ -145,6 +146,8 @@ const Info = () => {
 	React.useEffect(() => {
 		if (asset === -1) return;
 
+		const { COIN_NAME, COIN_URL, COIN_SUPPLY } = getConstants();
+
 		const btcinfo: AssetInfo = {
 			propertyid: 0,
 			name: "Bitcoin",
@@ -158,23 +161,23 @@ const Info = () => {
 			fixedissuance: false,
 			managedissuance: false,
 			"non-fungibletoken": false,
-			totaltokens: "21000000.00000000"
+			totaltokens: "21000000.00000000",
 		};
 
-		const ftcinfo: AssetInfo = {
+		const coininfo: AssetInfo = {
 			propertyid: 1,
-			name: "Feathercoin",
+			name: COIN_NAME,
 			category: "Core",
 			subcategory: "",
 			data: "",
-			url: "https://feathercoin.com/",
+			url: COIN_URL,
 			divisible: true,
 			issuer: "",
 			creationtxid: "",
 			fixedissuance: false,
 			managedissuance: false,
 			"non-fungibletoken": false,
-			totaltokens: "336000000.00000000"
+			totaltokens: COIN_SUPPLY.toFixed(8),
 		}
 
 		if (asset === 0) {
@@ -183,7 +186,7 @@ const Info = () => {
 		}
 
 		if (asset === 1) {
-			setAssetInfo(ftcinfo);
+			setAssetInfo(coininfo);
 			return;
 		}
 

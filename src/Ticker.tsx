@@ -23,12 +23,12 @@ const TickerElement =
 const TickerMarquee = () => {
 	const { settings, getClient } = React.useContext(AppContext);
 
-	const [FTCRates, setFTCRates] = React.useState<CoinbaseRate>(null);
+	const [coinRates, setCoinRates] = React.useState<CoinbaseRate>(null);
 	const [BTCRates, setBTCRates] = React.useState<CoinbaseRate>(null);
 
 	useInterval(async () => {
 		const API = api(getClient());
-		setFTCRates(await repeatAsync(API.getExchangeRates, 5)("FTC")
+		setCoinRates(await repeatAsync(API.getExchangeRates, 5)("FTC")
 			.catch(_ => null));
 		setBTCRates(await repeatAsync(API.getExchangeRates, 5)("BTC")
 			.catch(_ => null));
@@ -40,16 +40,16 @@ const TickerMarquee = () => {
 			true, currency) as string : "-";
 
 	let tickerList = [
-		<TickerElement prefix={`FTC/USD: `}
-			price={getPrice(FTCRates, "USD", 4)} key={uniqueId("ticker-")} />,
-		<TickerElement prefix={`FTC/EUR: `}
-			price={getPrice(FTCRates, "EUR", 4)} key={uniqueId("ticker-")} />,
-		<TickerElement prefix={`FTC/BTC: `}
-			price={getPrice(FTCRates, "BTC", 8).replace(/BTC/, BITCOIN_SYMBOL)}
+		<TickerElement prefix={`FTC-USD: `}
+			price={getPrice(coinRates, "USD", 4)} key={uniqueId("ticker-")} />,
+		<TickerElement prefix={`FTC-EUR: `}
+			price={getPrice(coinRates, "EUR", 4)} key={uniqueId("ticker-")} />,
+		<TickerElement prefix={`FTC-BTC: `}
+			price={getPrice(coinRates, "BTC", 8).replace(/BTC./, BITCOIN_SYMBOL)}
 			key={uniqueId("ticker-")} />,
-		<TickerElement prefix={`BTC/USD: `}
+		<TickerElement prefix={`BTC-USD: `}
 			price={getPrice(BTCRates, "USD")} key={uniqueId("ticker-")} />,
-		<TickerElement prefix={`BTC/EUR: `}
+		<TickerElement prefix={`BTC-EUR: `}
 			price={getPrice(BTCRates, "EUR")} key={uniqueId("ticker-")} />,
 	];
 

@@ -4,8 +4,6 @@ import Client from 'bitcoin-core';
 import { DateTime } from 'luxon';
 import { UTCTimestamp } from 'lightweight-charts';
 
-import api from './api';
-
 import { Data } from './Orders';
 import { sendTx, waitForTx } from './util';
 

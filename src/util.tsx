@@ -16,9 +16,10 @@ import { ReactNotificationOptions, store } from 'react-notifications-component';
 
 import api from './api';
 import Order from './order';
+import Platforms from './platforms';
 
 import {
-	APP_NAME, LAYOUT_NAME, CONF_NAME, SATOSHI, COIN_FEERATE, EXODUS_ADDRESS,
+	APP_NAME, LAYOUT_NAME, CONF_NAME, SATOSHI, COIN_FEERATE,
 	MAX_ACCEPT_FEE, EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE, OPRETURN_ACCEPT_VSIZE,
 	OPRETURN_SEND_VSIZE, OPRETURN_ORDER_VSIZE, MIN_CHANGE, EXODUS_CHANGE,
 	ACCOUNT_LABEL, OrderAction
@@ -133,7 +134,8 @@ export const repeatAsync = <T extends unknown>
 				return val;
 			});
 
-		if (!v) throw new Error(`Function ${func} timeout after ${times} tries`);
+		if (v === null)
+			throw new Error(`Function ${func} timeout after ${times} tries`);
 
 		return v;
 	}
@@ -519,6 +521,7 @@ export async function createRawAccept(client: typeof Client, seller: string,
 export async function createRawPay(client: typeof Client,
 	orders: { address: string, amount: number }[], inUTXO: UTXO, fee = 0) {
 	const API = api(client);
+	const { EXODUS_ADDRESS } = await constants(client);
 
 	const total = sum(orders.map(v => v.amount));
 	const change = roundn(inUTXO.amount - EXODUS_CHANGE - total - fee, 8);
@@ -527,8 +530,8 @@ export async function createRawPay(client: typeof Client,
 		throw new Error("UTXO not large enough"
 			+ `input=${inUTXO.amount}, total=${total}, fee=${fee + EXODUS_CHANGE}`);
 
-	let outs: RawTxBlueprint["outs"] =
-		[{ [inUTXO.address]: change }, { [EXODUS_ADDRESS]: EXODUS_CHANGE }];
+	let outs: RawTxBlueprint["outs"] = [{ [inUTXO.address]: change },
+	{ [EXODUS_ADDRESS]: EXODUS_CHANGE }];
 	outs.push(...orders.map(order =>
 		({ [order.address]: roundn(order.amount, 8) })));
 
@@ -592,6 +595,7 @@ export async function getPendingAccepts(client: typeof Client, propid?: number,
 export async function getFillOrders(client: typeof Client, propid: number,
 	quantity: number, isNoHighFees: boolean) {
 	const API = api(client);
+	const { COIN_NAME } = await constants(client);
 
 	// Get orderbook sells
 	const sells: DexSell[] = await repeatAsync
@@ -644,9 +648,8 @@ export async function getFillOrders(client: typeof Client, propid: number,
 		const orderAmount = parseFloat(i.amountavailable)
 			+ sum(pendingAccepts.get(i.seller) || []); // pendings are negative
 		const price =
-			parseFloat(i.feathercoindesired) / parseFloat(i.amountavailable);
-
-		log.debug(`orderAmount=${orderAmount} price=${price} fillRemaining=${fillRemaining}`)
+			parseFloat(i[`${COIN_NAME.toLowerCase()}desired`])
+			/ parseFloat(i.amountavailable);
 
 		if (orderAmount >= fillRemaining) {
 			log.debug("exiting loop")
@@ -849,6 +852,20 @@ export function notify(type: ReactNotificationOptions['type'],
 			onScreen: true
 		}
 	});
+}
+
+export async function constants(client: typeof Client) {
+	const API = api(client);
+
+	const info = await repeatAsync(API.getNetworkInfo, 5)();
+	const keys = [{ pattern: "/Feathercoin", key: "FEATHERCOIN" },
+	{ pattern: "/Litecoin", key: "LITECOIN" },
+	{ pattern: "/Bitcoin", key: "BITCOIN" }];
+
+	for (let { pattern, key } of keys)
+		if (info.subversion.startsWith(pattern)) return Platforms[key];
+
+	throw new Error(`Unknown platform ${info.subversion}`);
 }
 
 export class Queue<T> {

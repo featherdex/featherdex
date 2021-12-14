@@ -13,6 +13,7 @@ import { US_NUMF, EU_NUMF, IN_NUMF, FR_NUMF } from './constants';
 import './app.css';
 
 type SettingsProps = {
+	constants: PlatformConstants,
 	isOpen: boolean,
 	closeModalCallback: () => void,
 };
@@ -29,8 +30,7 @@ flex: 1;
 overflow: auto;
 `;
 
-export default function Settings({ isOpen, closeModalCallback }
-	: SettingsProps) {
+export default function Settings({ constants, isOpen, closeModalCallback }: SettingsProps) {
 	const { settings, setSettings, saveSettings } = React.useContext(AppContext);
 
 	const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,8 +56,7 @@ export default function Settings({ isOpen, closeModalCallback }
 	});
 
 	return <div>
-		<Modal
-			isOpen={isOpen}
+		<Modal isOpen={isOpen}
 			onRequestClose={closeModalCallback}
 			shouldCloseOnOverlayClick={false}
 			shouldCloseOnEsc={false}
@@ -70,22 +69,21 @@ export default function Settings({ isOpen, closeModalCallback }
 				overlay: {
 					zIndex: 3
 				}
-			}}
-		>
+			}}>
 			<Container>
 				<h2>Settings</h2>
 				<Body>
-					<h3>Omnifeather application</h3>
-					<label>Feathercoin config location:&nbsp;
+					<h3>{constants.COIN_OMNI_NAME} application</h3>
+					<label>{constants.COIN_NAME} config location:&nbsp;
 					<input type="text" className="dconfpath form-field"
 							name="dconfpath" value={settings.dconfpath} size={40}
-							onChange={handleChange} style={{marginRight: "10px"}} />
+							onChange={handleChange} style={{ marginRight: "10px" }} />
 						<button onClick={() => ipcRenderer.send("choose", {
 							rcvChannel: "choose:conf",
 							options: {
 								title: "Choose Config File...",
 								filters: [{
-									name: "Feathercoin Config Files",
+									name: `${constants.COIN_NAME} Config Files`,
 									extensions: ["conf"],
 								},
 								{ name: "All Files", extensions: ["*"] }],
@@ -118,7 +116,7 @@ export default function Settings({ isOpen, closeModalCallback }
 					</div>
 					<div>
 						<h3>Bittrex API (stored plaintext)</h3>
-						<label style={{marginRight: "10px"}}>API key:&nbsp;
+						<label style={{ marginRight: "10px" }}>API key:&nbsp;
 						<input type="text" className="apikey form-field"
 								name="apikey" value={settings.apikey}
 								size={32} onChange={handleChange} />

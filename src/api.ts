@@ -9,9 +9,8 @@ import { BarData, UTCTimestamp } from 'lightweight-charts';
 const Client = require('bitcoin-core');
 
 import {
-	COINBASE_API_ENDPOINT, BITTREX_API_ENDPOINT, COIN_MARKET, COIN_FEERATE,
-	MIN_ACCEPT_FEE, BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_FEATHERCOIN,
-	GENESIS_TIME
+	COINBASE_API_ENDPOINT, BITTREX_API_ENDPOINT, COIN_FEERATE,
+	MIN_ACCEPT_FEE, BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_COIN
 } from './constants';
 
 import { roundn } from './util';
@@ -106,51 +105,53 @@ const api = (client: typeof Client) => {
 		client.command("getblockhash", height);
 	API.getBlockchainInfo = (): Promise<BlockchainInfo> =>
 		client.command("getblockchaininfo");
+	API.getNetworkInfo = (): Promise<NetworkInfo> =>
+		client.command("getnetworkinfo");
 	API.estimateFee = (): Promise<number> =>
 		client.command("estimatesmartfee", BLOCK_WAIT).then((v: FeeEstimate) =>
 			v.feerate ? v.feerate : COIN_FEERATE);
 
 	// Get the first block on or after a timestamp and return the height
-	API.getBlockNumber =
-		async (time: UTCTimestamp, blockTimeStruct?: BlockTimeStruct) => {
-			const height = (await API.getBlockchainInfo()).blocks;
+	API.getBlockNumber = async (time: UTCTimestamp, genesisTime: UTCTimestamp,
+		blockTimeStruct?: BlockTimeStruct) => {
+		const height = (await API.getBlockchainInfo()).blocks;
 
-			if (time >= DateTime.now().toSeconds())
-				return height;
-			if (time <= GENESIS_TIME) return 1;
+		if (time >= DateTime.now().toSeconds())
+			return height;
+		if (time <= genesisTime) return 1;
 
-			let lower = 1, upper = height;
+		let lower = 1, upper = height;
 
-			// If we have times in the cache then update our range the best we can
-			if (!!blockTimeStruct) {
-				const lowerNode = blockTimeStruct.cache.le(time),
-					upperNode = blockTimeStruct.cache.ge(time);
+		// If we have times in the cache then update our range the best we can
+		if (!!blockTimeStruct) {
+			const lowerNode = blockTimeStruct.cache.le(time),
+				upperNode = blockTimeStruct.cache.ge(time);
 
-				if (lowerNode.valid) lower = lowerNode.value;
-				if (upperNode.valid) upper = upperNode.value;
-			}
+			if (lowerNode.valid) lower = lowerNode.value;
+			if (upperNode.valid) upper = upperNode.value;
+		}
 
-			if (lower === upper) return lower;
+		if (lower === upper) return lower;
 
-			// Perform binary search
-			do {
-				const mid = Math.ceil((lower + upper) / 2);
-				const block = await API.getBlock(await API.getBlockHash(mid),
-					blockTimeStruct);
+		// Perform binary search
+		do {
+			const mid = Math.ceil((lower + upper) / 2);
+			const block = await API.getBlock(await API.getBlockHash(mid),
+				blockTimeStruct);
 
-				if (time < block.time) upper = mid - 1;
-				else lower = mid;
-			} while (lower !== upper);
+			if (time < block.time) upper = mid - 1;
+			else lower = mid;
+		} while (lower !== upper);
 
-			return lower;
-		};
+		return lower;
+	};
 
-	API.getCoinBook = (): Promise<BittrexBook> =>
-		fetch(`${BITTREX_API_ENDPOINT}/markets/${COIN_MARKET}/orderbook`)
+	API.getCoinBook = async (market: string): Promise<BittrexBook> =>
+		fetch(`${BITTREX_API_ENDPOINT}/markets/${market}/orderbook`)
 			.then(r => r.json(),
 				_ => { throw BittrexError; }) as Promise<BittrexBook>;
 
-	API.getCoinTicker = async (market = COIN_MARKET) => {
+	API.getCoinTicker = async (market: string) => {
 		const ticker = await
 			fetch(`${BITTREX_API_ENDPOINT}/markets/${market}/ticker`)
 				.then(r => r.json(), _ => { throw BittrexError; }) as BittrexTicker;
@@ -172,16 +173,16 @@ const api = (client: typeof Client) => {
 		};
 	};
 
-	API.getCoinOHLC = (interval: string,
+	API.getCoinOHLC = (market: string, interval: string,
 		year: number, month?: number, day?: number): Promise<BarData[]> =>
-		fetch(`${BITTREX_API_ENDPOINT}/markets/${COIN_MARKET}/candles/`
+		fetch(`${BITTREX_API_ENDPOINT}/markets/${market}/candles/`
 			+ `TRADE/${interval}/historical/${year}` +
 			(month ? `/${month}` : "") + (day ? `/${day}` : ""))
 			.then(r => r.json(), _ => { throw BittrexError; })
 			.then((data: BittrexCandle[]) => data.map(toBarData));
 
-	API.getCoinOHLCRecent = (interval: string): Promise<BarData[]> =>
-		fetch(`${BITTREX_API_ENDPOINT}/markets/${COIN_MARKET}/candles/`
+	API.getCoinOHLCRecent = (market: string, interval: string): Promise<BarData[]> =>
+		fetch(`${BITTREX_API_ENDPOINT}/markets/${market}/candles/`
 			+ `TRADE/${interval}/recent`)
 			.then(r => r.json(), _ => { throw BittrexError; })
 			.then((data: BittrexCandle[]) => data.map(toBarData));
@@ -244,9 +245,11 @@ const api = (client: typeof Client) => {
 	};
 
 	API.listAssetTrades = async (start: UTCTimestamp, end: UTCTimestamp,
-		blockTimeStruct?: BlockTimeStruct): Promise<AssetTrade[]> => {
-		const [first, last] = [await API.getBlockNumber(start, blockTimeStruct),
-		await API.getBlockNumber(end, blockTimeStruct)];
+		genesisTime: UTCTimestamp, blockTimeStruct?: BlockTimeStruct):
+		Promise<AssetTrade[]> => {
+		const [first, last] =
+			[await API.getBlockNumber(start, genesisTime, blockTimeStruct),
+			await API.getBlockNumber(end, genesisTime, blockTimeStruct)];
 
 		const allTXids: string[] =
 			await client.command("omni_listblockstransactions", first, last);
@@ -263,7 +266,7 @@ const api = (client: typeof Client) => {
 					block: v.block,
 					status: "CLOSED",
 					idBuy: p.propertyid,
-					idSell: PROPID_FEATHERCOIN, // currently only accept FTC
+					idSell: PROPID_COIN, // currently only accept base coin
 					quantity: parseFloat(p.amountbought),
 					remaining: 0,
 					amount: parseFloat(p.amountpaid),
@@ -271,100 +274,100 @@ const api = (client: typeof Client) => {
 				})));
 	};
 
-	API.listMyAssetTrades =
-		async (startblock?: number, endblock?: number): Promise<AssetTrade[]> => {
-			const txs = await API.listTransactions(startblock, endblock);
+	API.listMyAssetTrades = async (coinName: string, startblock?: number,
+		endblock?: number): Promise<AssetTrade[]> => {
+		const txs = await API.listTransactions(startblock, endblock);
 
-			const allTXFees = Object.assign({},
-				...(await client.command(txs.map(otx =>
+		const allTXFees = Object.assign({},
+			...(await client.command(txs.map(otx =>
+			({
+				method: "gettransaction",
+				parameters: [otx.txid]
+			}))) as Tx[]).map(tx => ({ [tx.txid]: tx.fee })));
+
+		const buyTXs = txs.filter(v =>
+			v.type === "DEx Purchase"
+			&& allTXFees[v.txid] !== undefined) as (DexPurchase & BlockInfo)[];
+		const sellTXs = txs.filter(v =>
+			v.type === "DEx Sell Offer" && v.valid) as (DexOrder & BlockInfo)[];
+		const dexsells: Record<string, DexSell> = Object.assign({},
+			...(await API.getExchangeSells()).map(s => ({ [s.txid]: s })));
+
+		let buys: AssetTrade[] = buyTXs.flatMap(v =>
+			v.purchases.filter((purchase: Purchase) =>
+				purchase.valid).map((purchase: Purchase) =>
 				({
-					method: "gettransaction",
-					parameters: [otx.txid]
-				}))) as Tx[]).map(tx => ({ [tx.txid]: tx.fee })));
+					time: v.blocktime as UTCTimestamp,
+					txid: v.txid,
+					block: v.block,
+					status: "CLOSED",
+					idBuy: purchase.propertyid,
+					idSell: PROPID_COIN,
+					quantity: parseFloat(purchase.amountbought),
+					remaining: 0,
+					amount: parseFloat(purchase.amountpaid),
+					fee: -allTXFees[v.txid],
+				})));
 
-			const buyTXs = txs.filter(v =>
-				v.type === "DEx Purchase"
-				&& allTXFees[v.txid] !== undefined) as (DexPurchase & BlockInfo)[];
-			const sellTXs = txs.filter(v =>
-				v.type === "DEx Sell Offer" && v.valid) as (DexOrder & BlockInfo)[];
-			const dexsells: Record<string, DexSell> = Object.assign({},
-				...(await API.getExchangeSells()).map(s => ({ [s.txid]: s })));
+		let cancelledSells: Record<number, boolean> = {};
+		{
+			let sellSet: Record<string, number> = {};
 
-			let buys: AssetTrade[] = buyTXs.flatMap(v =>
-				v.purchases.filter((purchase: Purchase) =>
-					purchase.valid).map((purchase: Purchase) =>
-					({
-						time: v.blocktime as UTCTimestamp,
-						txid: v.txid,
-						block: v.block,
-						status: "CLOSED",
-						idBuy: purchase.propertyid,
-						idSell: PROPID_FEATHERCOIN,
-						quantity: parseFloat(purchase.amountbought),
-						remaining: 0,
-						amount: parseFloat(purchase.amountpaid),
-						fee: -allTXFees[v.txid],
-					})));
+			for (let i = sellTXs.length - 1; i >= 0; i--) {
+				const dexsell = dexsells[sellTXs[i].txid];
+				if (dexsell) continue;
 
-			let cancelledSells: Record<number, boolean> = {};
-			{
-				let sellSet: Record<string, number> = {};
+				const orderAddr = sellTXs[i].sendingaddress;
 
-				for (let i = sellTXs.length - 1; i >= 0; i--) {
-					const dexsell = dexsells[sellTXs[i].txid];
-					if (dexsell) continue;
+				if (sellTXs[i].action === "cancel") {
+					if (sellSet[orderAddr] === null) continue;
 
-					const orderAddr = sellTXs[i].sendingaddress;
-
-					if (sellTXs[i].action === "cancel") {
-						if (sellSet[orderAddr] === null) continue;
-
-						cancelledSells[sellSet[orderAddr]] = true;
-						sellSet[orderAddr] = null;
-					} else if (sellTXs[i].action === "new")
-						sellSet[orderAddr] = i;
-				}
+					cancelledSells[sellSet[orderAddr]] = true;
+					sellSet[orderAddr] = null;
+				} else if (sellTXs[i].action === "new")
+					sellSet[orderAddr] = i;
 			}
+		}
 
-			let sells: AssetTrade[] = [];
-			for (let i = 0; i < sellTXs.length; i++) {
-				const tx = sellTXs[i];
-				const dexsell = dexsells[tx.txid];
+		let sells: AssetTrade[] = [];
+		for (let i = 0; i < sellTXs.length; i++) {
+			const tx = sellTXs[i];
+			const dexsell = dexsells[tx.txid];
 
-				if (tx.action === "cancel") continue;
+			if (tx.action === "cancel") continue;
 
-				if (dexsell) {
-					const remaining = parseFloat(dexsell.amountavailable);
-					sells.push({
-						address: dexsell.seller,
-						time: tx.blocktime as UTCTimestamp,
-						txid: tx.txid,
-						block: tx.block,
-						status: "OPEN",
-						idBuy: PROPID_FEATHERCOIN,
-						idSell: tx.propertyid,
-						quantity: parseFloat(tx.amount),
-						remaining: remaining,
-						amount: remaining * parseFloat(dexsell.unitprice),
-						fee: allTXFees[tx.txid],
-					});
-				} else
-					sells.push({
-						time: tx.blocktime as UTCTimestamp,
-						txid: tx.txid,
-						block: tx.block,
-						status: cancelledSells[i] ? "CANCELLED" : "CLOSED",
-						idBuy: PROPID_FEATHERCOIN,
-						idSell: tx.propertyid,
-						quantity: parseFloat(tx.amount),
-						remaining: 0,
-						amount: parseFloat(tx.feathercoindesired),
-						fee: allTXFees[tx.txid],
-					});
-			}
+			if (dexsell) {
+				const remaining = parseFloat(dexsell.amountavailable);
+				sells.push({
+					address: dexsell.seller,
+					time: tx.blocktime as UTCTimestamp,
+					txid: tx.txid,
+					block: tx.block,
+					status: "OPEN",
+					idBuy: PROPID_COIN,
+					idSell: tx.propertyid,
+					quantity: parseFloat(tx.amount),
+					remaining: remaining,
+					amount: remaining * parseFloat(dexsell.unitprice),
+					fee: allTXFees[tx.txid],
+				});
+			} else
+				sells.push({
+					time: tx.blocktime as UTCTimestamp,
+					txid: tx.txid,
+					block: tx.block,
+					status: cancelledSells[i] ? "CANCELLED" : "CLOSED",
+					idBuy: PROPID_COIN,
+					idSell: tx.propertyid,
+					quantity: parseFloat(tx.amount),
+					remaining: 0,
+					amount: parseFloat(tx[`${coinName.toLowerCase()}desired`]),
+					fee: allTXFees[tx.txid],
+				});
+		}
 
-			return buys.concat(sells).sort((txa, txb) => txa.time - txb.time);
-		};
+		return buys.concat(sells).sort((txa, txb) => txa.time - txb.time);
+	};
 
 	API.getNFTRanges = (propid: number) =>
 		client.command("omni_getnonfungibletokenranges", propid);
@@ -418,22 +421,22 @@ const api = (client: typeof Client) => {
 			`${BITTREX_API_ENDPOINT}/balances/${currency}`,
 			"GET") as Promise<BittrexBalance>;
 
-	API.getBittrexOrders = (apiKey: string, apiSecret: string):
+	API.getBittrexOrders = (apiKey: string, apiSecret: string, market: string):
 		Promise<BittrexOrder[]> => doAuthRequest(apiKey, apiSecret,
-			`${BITTREX_API_ENDPOINT}/orders/open?marketSymbol=FTC-BTC`,
+			`${BITTREX_API_ENDPOINT}/orders/open?marketSymbol=${market}`,
 			"GET") as Promise<BittrexOrder[]>;
 
-	API.getBittrexHistory =
-		(apiKey: string, apiSecret: string): Promise<BittrexOrder[]> =>
-			doAuthRequest(apiKey, apiSecret,
-				`${BITTREX_API_ENDPOINT}/orders/closed?marketSymbol=FTC-BTC`,
-				"GET") as Promise<BittrexOrder[]>;
+	API.getBittrexHistory = (apiKey: string, apiSecret: string,
+		market: string): Promise<BittrexOrder[]> =>
+		doAuthRequest(apiKey, apiSecret,
+			`${BITTREX_API_ENDPOINT}/orders/closed?marketSymbol=${market}`,
+			"GET") as Promise<BittrexOrder[]>;
 
-	API.makeBittrexOrder = (apiKey: string, apiSecret: string,
+	API.makeBittrexOrder = (apiKey: string, apiSecret: string, market: string,
 		buysell: "buy" | "sell", orderType: "market" | "limit",
 		quantity: number, price?: number) => {
 		let body: BittrexNewOrder = {
-			marketSymbol: "FTC-BTC",
+			marketSymbol: market,
 			direction: buysell.toUpperCase() as ("BUY" | "SELL"),
 			type: orderType.toUpperCase() as ("MARKET" | "LIMIT"),
 			timeInForce: orderType === "market"

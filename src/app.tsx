@@ -29,13 +29,14 @@ import Info from './Info';
 import Ticker from './Ticker';
 import Markets from './Markets';
 import { TimeCache } from './timecache';
+import Platforms from './platforms';
 import AppContext from './contexts/AppContext';
 
-import { PROPID_BITCOIN, PROPID_FEATHERCOIN, OMNI_START_TIME } from './constants';
+import { PROPID_BITCOIN, PROPID_COIN } from './constants';
 import {
 	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf, writeLayout,
 	isNumber, isBoolean, parseBoolean, handlePromise, log, Queue, roundn, toCandle,
-	isBarData, tradeToLineData,
+	isBarData, tradeToLineData, constants
 } from './util';
 
 import 'react-contexify/dist/ReactContexify.css';
@@ -63,6 +64,7 @@ export type AppState = {
 
 export type AppMethods = {
 	getClient: () => typeof Client,
+	getConstants: () => PlatformConstants,
 	setSettings: (s: Record<string, any>) => void,
 	saveSettings: () => void,
 	addPendingDownload: Queue<DownloadOpts>["push"],
@@ -80,6 +82,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 	clearStale: ReturnType<typeof setTimeout>;
 
 	client: typeof Client;
+	consts: PlatformConstants;
 	pendingDownloads = new Queue<DownloadOpts>();
 	pendingOrders: Order[] = [];
 	blockTimes = createRBTree<number, number>();
@@ -88,6 +91,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 		const client = this.getClient();
 		return !!client ?
 			api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp,
+				this.getConstants().GENESIS_TIME as UTCTimestamp,
 				{ cache: this.getBlockTimes(), push: this.addBlockTime }) : null
 	}, t => t.time);
 
@@ -105,6 +109,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 			password: iRPCSettings.rpcpassword,
 		});
 
+		this.consts = Platforms.FEATHERCOIN;
+
 		log.debug(`host=${iRPCSettings.rpchost}`);
 		log.debug(`port=${iRPCSettings.rpcport}`);
 		log.debug(`username=${iRPCSettings.rpcuser}`);
@@ -113,14 +119,15 @@ class App extends React.PureComponent<AppProps, AppState> {
 		api(this.client).isDaemonUp().then((v: boolean) => {
 			if (!v) {
 				alert("Could not establish connection to omnifeather daemon, "
-					+ "please make sure it is running and that the Feathercoin "
+					+ "please make sure it is running and that the coin "
 					+ "config path in this app's settings is correct");
 				this.openSettings();
-			}
+			} else constants(this.client).then(c => this.consts = c);
 		});
 
 		this.methods = {
 			getClient: this.getClient,
+			getConstants: this.getConstants,
 			setSettings: this.setSettings,
 			saveSettings: this.saveSettings,
 			addPendingDownload: this.addPendingDownload,
@@ -158,6 +165,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 	getClient = () => this.client;
 
+	getConstants = () => this.consts;
+
 	getBlockTimes = () => this.blockTimes;
 	addBlockTime = (time: number, height: number) =>
 		this.blockTimes = this.blockTimes.insert(time, height);
@@ -190,12 +199,14 @@ class App extends React.PureComponent<AppProps, AppState> {
 		const now = DateTime.now().toUTC();
 		const yesterday = now.minus({ days: 1 }).startOf("day");
 
-		let tickerData = await handlePromise(repeatAsync(API.getCoinTicker, 5)(),
-			"Could not get Feathercoin ticker data");
+		const { COIN_NAME, COIN_MARKET, OMNI_START_TIME } = this.getConstants();
+
+		let tickerData = await handlePromise(repeatAsync(API.getCoinTicker, 5)
+			(COIN_MARKET), `Could not get ${COIN_NAME} ticker data`);
 		if (tickerData === null) return;
 
 		let marketData = new Map<number, Ticker>([[1,
-			{ market: "FTC/BTC", ...tickerData }]]);
+			{ market: COIN_MARKET, ...tickerData }]]);
 
 		const dexsells = await handlePromise(repeatAsync(API.getExchangeSells, 3)(),
 			"Could not get open exchange orders");
@@ -250,16 +261,18 @@ class App extends React.PureComponent<AppProps, AppState> {
 	}
 
 	genAssetList = async () => {
+		if (!this.client) return;
+
+		const { COIN_NAME } = this.getConstants();
+
 		let proplist = [{
 			id: PROPID_BITCOIN,
 			name: `(${PROPID_BITCOIN}) Bitcoin`,
 		},
 		{
-			id: PROPID_FEATHERCOIN,
-			name: `(${PROPID_FEATHERCOIN}) Feathercoin`,
+			id: PROPID_COIN,
+			name: `(${PROPID_COIN}) ${COIN_NAME}`,
 		}];
-
-		if (!this.client) return;
 
 		const API = api(this.client);
 
@@ -333,7 +346,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 							print(JSON.stringify(r, null, 2)),
 							(err: Error) => print(err.message));
 				}}
-				msg='Enter omnifeather command...'
+				msg={`Enter ${this.consts.COIN_OMNI_NAME} command...`}
 				commands={{
 					"help": (cmd: any, print: (k: any) => void) => {
 						const cmdarr = cmd as string[];
@@ -376,7 +389,10 @@ class App extends React.PureComponent<AppProps, AppState> {
 					username: s.rpcuser,
 					password: s.rpcpassword,
 				}));
-		if (clientSettings !== null) this.client = new Client(clientSettings);
+		if (clientSettings !== null) {
+			this.client = new Client(clientSettings);
+			constants(this.client).then(c => this.consts = c);
+		}
 		writeSettings(this.state.settings);
 	};
 
@@ -385,18 +401,15 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 	render() {
 		return <AppContext.Provider value={{ ...this.state, ...this.methods }}>
-			<Layout
-				ref={this.state.layoutRef}
+			<Layout ref={this.state.layoutRef}
 				model={this.state.layout}
 				factory={this.factory} />
-			<Settings
+			<Settings constants={this.consts}
 				isOpen={this.state.sOpen}
 				closeModalCallback={this.closeSettings} />
-			<About
-				isOpen={this.state.aOpen}
+			<About isOpen={this.state.aOpen}
 				closeModalCallback={this.closeAbout} />
-			<Downloads
-				isOpen={this.state.dOpen}
+			<Downloads isOpen={this.state.dOpen}
 				closeModalCallback={this.closeDownloads} />
 		</AppContext.Provider>;
 	}

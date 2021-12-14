@@ -19,7 +19,7 @@ import {
 } from './util';
 import {
 	SATOSHI, MIN_CHANGE, TRADE_FEERATE, MIN_TRADE_FEE, UP_SYMBOL, DOWN_SYMBOL,
-	PROPID_BITCOIN, PROPID_FEATHERCOIN, ACCOUNT_LABEL, OrderAction
+	PROPID_BITCOIN, PROPID_COIN, ACCOUNT_LABEL, OrderAction
 } from './constants';
 
 export type TraderState = {
@@ -131,8 +131,8 @@ const reducerTrade =
 				return {
 					...state,
 					trade: action.payload,
-					base: action.payload === PROPID_FEATHERCOIN ?
-						PROPID_BITCOIN : PROPID_FEATHERCOIN,
+					base: action.payload === PROPID_COIN ?
+						PROPID_BITCOIN : PROPID_COIN,
 				};
 			case "set_bids":
 				return { ...state, bids: action.payload };
@@ -145,7 +145,9 @@ const reducerTrade =
 	}
 
 const Trader = ({ state, dispatch }: TraderProps) => {
-	const { settings, getClient, addPendingOrder } = React.useContext(AppContext);
+	const {
+		settings, getClient, getConstants, addPendingOrder
+	} = React.useContext(AppContext);
 
 	const cDispatch = (type: TraderAction["type"]) => (payload: any) =>
 		dispatch({ type, payload });
@@ -184,7 +186,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		switch (name) {
 			case "baseasset":
 				cDispatch("set_base")(value === "btc" ? PROPID_BITCOIN :
-					(value === "ftc" ? PROPID_FEATHERCOIN : -1));
+					(value === "ftc" ? PROPID_COIN : -1));
 				break;
 			case "ordertype":
 				cDispatch("set_ordertype")(value);
@@ -210,7 +212,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			return;
 		}
 
-		if (state.trade > PROPID_FEATHERCOIN && state.base === PROPID_BITCOIN) {
+		if (state.trade > PROPID_COIN && state.base === PROPID_BITCOIN) {
 			alert("Cannot trade Omni assets to Bitcoin");
 			return;
 		}
@@ -239,9 +241,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		const tradeInfo =
 			`${state.orderType.toUpperCase()} ${state.buysell.toUpperCase()}`
 			+ ` ${state.quantity.toFixed(8)}`
-			+ ` ${state.trade === PROPID_FEATHERCOIN ?
-				"FTC" : `[ASSET #${state.trade}]`}`
-			+ ` @${state.price.toFixed(8)} ${state.base === PROPID_FEATHERCOIN ?
+			+ ` ${state.trade === PROPID_COIN ? "FTC" : `[ASSET #${state.trade}]`}`
+			+ ` @${state.price.toFixed(8)} ${state.base === PROPID_COIN ?
 				"FTC" : "BTC"}`;
 
 		if (state.isConfirm) {
@@ -252,6 +253,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 		const client = getClient();
 		const API = api(client);
+		const { COIN_MARKET } = getConstants();
 
 		// Omni trade
 		if (state.base === 1) {
@@ -268,8 +270,9 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 					return;
 				}
 			} else {
-				const assets = await handlePromise(repeatAsync
-					(API.getWalletAssets, 5)(), "Could not get wallet assets")
+				const assets = await
+					handlePromise(repeatAsync(API.getWalletAssets, 5)(),
+						"Could not get wallet assets");
 				if (assets === null) return;
 
 				const asset = assets.filter(v => v.propertyid === state.trade);
@@ -288,8 +291,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		} else {
 			// place Bittrex order and hope for the best
 			await API.makeBittrexOrder(settings.apikey, settings.apisecret,
-				state.buysell, state.orderType, state.quantity, state.price)
-				.then((v: BittrexOrder) => {
+				COIN_MARKET, state.buysell, state.orderType, state.quantity,
+				state.price).then((v: BittrexOrder) => {
 					notify("success", "Placed order", toTradeInfo(v));
 				}, err => handleError(err, "error"));
 			return;
@@ -319,8 +322,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			if (utxos == null) return;
 
 			if (utxos.length === 0) {
-				handleError(new Error("No available UTXOs for transaction"),
-					"error");
+				handleError(new Error("Cannot find UTXOs for transaction"), "error");
 				return;
 			}
 
@@ -851,7 +853,7 @@ const CoinInput = ({ value, dispatch, step, digits = 8,
 const Trade = () => {
 	const initialState: TraderState = {
 		trade: -1,
-		base: PROPID_FEATHERCOIN,
+		base: PROPID_COIN,
 		price: 0,
 		quantity: 0,
 		fee: 0,

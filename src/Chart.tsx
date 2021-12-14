@@ -17,7 +17,7 @@ import AssetSearch from './AssetSearch';
 
 import {
 	CHART_MINUTE_DAYS, CHART_HOUR_MONTHS, CHART_DAY_YEARS, API_RETRIES,
-	OMNI_START_TIME, PROPID_BITCOIN, PROPID_FEATHERCOIN
+	PROPID_BITCOIN, PROPID_COIN
 } from './constants';
 import {
 	handleError, uniqueId, repeatAsync, isBarData, isWhitespaceData,
@@ -25,7 +25,9 @@ import {
 } from './util';
 
 const Chart = () => {
-	const { getClient, getBlockTimes, addBlockTime } = React.useContext(AppContext);
+	const {
+		getClient, getConstants, getBlockTimes, addBlockTime
+	} = React.useContext(AppContext);
 
 	const [idBuy, setIDBuy] = React.useState(-1);
 	const [idSell, setIDSell] = React.useState(-1);
@@ -41,8 +43,9 @@ const Chart = () => {
 	const tradesCache = useTimeCache((ts, te) => {
 		const client = getClient();
 		return !!client ?
-		api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp,
-			{ cache: getBlockTimes(), push: addBlockTime }) : null
+			api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp,
+				getConstants().GENESIS_TIME as UTCTimestamp,
+				{ cache: getBlockTimes(), push: addBlockTime }) : null
 	}, t => t.time);
 
 	const uid = React.useMemo(() => uniqueId("chart-"), []);
@@ -165,7 +168,7 @@ const Chart = () => {
 		}
 
 		// TODO
-		if (idBuy > PROPID_FEATHERCOIN && idSell > PROPID_FEATHERCOIN) {
+		if (idBuy > PROPID_COIN && idSell > PROPID_COIN) {
 			setReady(false);
 			series.setData([]);
 			chart.applyOptions({
@@ -179,6 +182,8 @@ const Chart = () => {
 			setReady(false);
 
 			const API = api(getClient());
+			const { OMNI_START_TIME, COIN_MARKET } = getConstants();
+
 			let data: (BarData | WhitespaceData)[] = [];
 
 			let rawInterval;
@@ -225,7 +230,7 @@ const Chart = () => {
 			if (idBuy === PROPID_BITCOIN || idSell === PROPID_BITCOIN) {
 				let firstdata = await
 					repeatAsync(API.getCoinOHLCRecent, API_RETRIES)
-						(interval).catch(err => {
+						(COIN_MARKET, interval).catch(err => {
 							handleError(err);
 							return [] as BarData[];
 						});
@@ -238,7 +243,7 @@ const Chart = () => {
 				for (var i = chunkCount; i > 0; i--) {
 					const date = subInt(timeBoundary, interval, i);
 
-					let args = [interval, date.year];
+					let args = [COIN_MARKET, interval, date.year];
 					if (interval !== "DAY_1") args.push(date.month);
 					if (interval === "MINUTE_5") args.push(date.day);
 
@@ -257,13 +262,13 @@ const Chart = () => {
 				if (idBuy === PROPID_BITCOIN) // BTC-(token)
 					btcdata = btcdata.map(inverseOHLC);
 
-				// BTC-FTC or FTC-BTC
-				if (idBuy === PROPID_FEATHERCOIN || idSell === PROPID_FEATHERCOIN)
+				// BTC-(base coin) or (base coin)-BTC
+				if (idBuy === PROPID_COIN || idSell === PROPID_COIN)
 					data = Array.from(btcdata);
 			}
 
-			if (idBuy > PROPID_FEATHERCOIN || idSell > PROPID_FEATHERCOIN) {
-				// not done yet, get asset-FTC data
+			if (idBuy > PROPID_COIN || idSell > PROPID_COIN) {
+				// not done yet, get asset-(base coin) data
 				let assetdata: (BarData | WhitespaceData)[] = [];
 
 				const firstDate = subInt(timeBoundary, interval, chunkCount);
@@ -272,7 +277,7 @@ const Chart = () => {
 						Math.floor(firstDate.toSeconds())),
 						Math.floor(DateTime.now().toSeconds())))
 						.filter(trade =>
-							trade.idBuy === (idBuy > PROPID_FEATHERCOIN ?
+							trade.idBuy === (idBuy > PROPID_COIN ?
 								idBuy : idSell)).sort((a, b) =>
 									a.time - b.time).map(tradeToLineData);
 
@@ -281,8 +286,7 @@ const Chart = () => {
 				assetdata = toCandle(trades, rawInterval);
 
 				// TODO change ...
-				if (idSell > PROPID_FEATHERCOIN)
-					assetdata = assetdata.map(inverseOHLC);
+				if (idSell > PROPID_COIN) assetdata = assetdata.map(inverseOHLC);
 
 				// Now multiply if we need to
 				if (btcdata) {
@@ -355,6 +359,7 @@ const Chart = () => {
 		if (!ready) return;
 		(async function() {
 			const API = api(getClient());
+			const { GENESIS_TIME, COIN_MARKET } = getConstants();
 
 			const interval = getInterval();
 			const rawInterval = interval === "DAY_1" ? 24 * 60 * 60 :
@@ -380,22 +385,24 @@ const Chart = () => {
 
 			let btcdata: BarData[];
 			if (idBuy === PROPID_BITCOIN || idSell === PROPID_BITCOIN)
-				btcdata = await API.getCoinOHLCRecent(interval).catch(err => {
-					handleError(err);
-					return [];
-				});
+				btcdata = await
+					API.getCoinOHLCRecent(COIN_MARKET, interval).catch(err => {
+						handleError(err);
+						return [];
+					});
 
 			let assetdata: (BarData | WhitespaceData)[];
-			if (idBuy > PROPID_FEATHERCOIN || idSell > PROPID_FEATHERCOIN) {
+			if (idBuy > PROPID_COIN || idSell > PROPID_COIN) {
 				const data = await API.listAssetTrades(candleTime,
-					Math.floor(now.toSeconds()) as UTCTimestamp)
+					Math.floor(now.toSeconds()) as UTCTimestamp,
+					GENESIS_TIME as UTCTimestamp)
 					.catch(err => {
 						handleError(err);
 						return [] as AssetTrade[];
 					});
 				const trades = data.filter(v =>
-					v.idSell === (idBuy > PROPID_FEATHERCOIN ? idBuy : idSell))
-					.map(tradeToLineData);
+					v.idSell === (idBuy > PROPID_COIN ?
+						idBuy : idSell)).map(tradeToLineData);
 				assetdata = toCandle(trades, rawInterval);
 			}
 
@@ -404,11 +411,8 @@ const Chart = () => {
 				if (btcdata && btcdata.length !== 0) {
 					let btccandle = btcdata[btcdata.length - 1 - offset];
 
-					if (idBuy === PROPID_BITCOIN)
-						btccandle = inverseOHLC(btccandle);
-
-					if (idBuy === PROPID_FEATHERCOIN
-						|| idSell === PROPID_FEATHERCOIN)
+					if (idBuy === PROPID_BITCOIN) btccandle = inverseOHLC(btccandle);
+					if (idBuy === PROPID_COIN || idSell === PROPID_COIN)
 						candle = { ...btccandle };
 				}
 
@@ -419,7 +423,7 @@ const Chart = () => {
 					if (!assetcandle || isWhitespaceData(assetcandle))
 						candle = { time: ctime };
 					else {
-						if (idSell > PROPID_FEATHERCOIN)
+						if (idSell > PROPID_COIN)
 							assetcandle = inverseOHLC(assetcandle);
 
 						if (candle)

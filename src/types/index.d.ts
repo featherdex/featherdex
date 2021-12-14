@@ -45,6 +45,23 @@ declare type BlockTimeStruct = {
 declare type Settings = Record<string, any>;
 declare type RPCSettings = Record<string, any>;
 
+declare type PlatformConstants = {
+	COIN_NAME: string,
+	COIN_TICKER: string,
+	COIN_OMNI_NAME: string,
+	COIN_LOGO_PATH: string,
+	COIN_URL: string,
+	COIN_SUPPLY: number,
+	COIN_FOLDER: string,
+	COIN_FOLDER_LINUX: string,
+	COIN_MARKET: string,
+	FEE_ADDRESS: string,
+	EXODUS_ADDRESS: string,
+	GENESIS_TIME: number,
+	OMNI_START_HEIGHT: number,
+	OMNI_START_TIME: number,
+};
+
 declare type Property = {
 	id: number,
 	name: string,
@@ -90,13 +107,12 @@ declare type DexSell = {
 	propertyid: string,
 	seller: string,
 	amountavailable: string,
-	feathercoindesired: string,
 	unitprice: string,
 	timelimit: number,
 	minimumfee: string,
 	amountaccepted: string,
 	accepts: any[],
-};
+} & { [desired: string]: string };
 
 declare type DexAccept = OmniTx & {
 	referenceaddress: string,
@@ -109,11 +125,10 @@ declare type DexOrder = OmniTx & {
 	propertyid: number,
 	divisible: boolean,
 	amount: string,
-	feathercoindesired: string,
 	timelimit: number,
 	feerequired: string,
 	action: "new" | "update" | "cancel",
-};
+} & { [desired: string]: string };
 
 declare type DexPurchase = OmniTx & {
 	purchases: Purchase[],
@@ -448,6 +463,32 @@ declare type BlockchainInfo = {
 			}
 		}
 	}
+};
+
+declare type NetworkInfo = {
+	version: number,
+	subversion: string,
+	protocolversion: number,
+	localservices: string,
+	localrelay: boolean,
+	timeoffset: number,
+	connections: number,
+	networkactive: boolean,
+	networks: {
+		name: string,
+		limited: boolean,
+		reachable: boolean,
+		proxy: string
+		proxy_randomize_credentials: boolean,
+	}[],
+	relayfee: number,
+	incrementalfee: number,
+	localaddresses: {
+		address: string,
+		port: number,
+		score: number,
+	}[],
+	warnings: string,
 };
 
 declare type FeeEstimate = {

@@ -12,7 +12,7 @@ import sum from 'lodash/fp/sum';
 import { TraderState, TraderAction } from './Trade';
 
 import {
-	PROPID_BITCOIN, PROPID_FEATHERCOIN, EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE,
+	PROPID_BITCOIN, PROPID_COIN, EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE,
 	OPRETURN_ORDER_VSIZE
 } from './constants';
 
@@ -28,12 +28,12 @@ type OrderbookProps = {
 }
 
 const Orderbook = ({ state, dispatch }: OrderbookProps) => {
-	const { settings, getClient } = React.useContext(AppContext);
+	const { settings, getClient, getConstants } = React.useContext(AppContext);
 
 	const refreshData = async () => {
 		if (state.trade === -1 || state.base === -1
 			|| state.trade === state.base
-			|| (state.trade > PROPID_FEATHERCOIN && state.base === PROPID_BITCOIN)) {
+			|| (state.trade > PROPID_COIN && state.base === PROPID_BITCOIN)) {
 			if (state.bids.length !== 0) dispatch({ type: "set_bids", payload: [] });
 			if (state.asks.length !== 0) dispatch({ type: "set_asks", payload: [] });
 			return;
@@ -61,9 +61,9 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 
 		const client = getClient();
 		const API = api(client);
-		if (state.trade === PROPID_FEATHERCOIN) {
-			// FTC-BTC
-			const book: BittrexBook = await API.getCoinBook();
+		if (state.trade === PROPID_COIN) {
+			// coin-BTC
+			const book = await API.getCoinBook(getConstants().COIN_MARKET);
 
 			dispatch({ type: "set_bids", payload: toData(book.bid) });
 			dispatch({ type: "set_asks", payload: toData(book.ask) });
@@ -245,7 +245,7 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 	const error = React.useMemo(() => state.trade === -1 || state.base === -1 ?
 		"Select assets to trade" : (state.trade === state.base ?
 			"Traded assets cannot be same" :
-			(state.trade > PROPID_FEATHERCOIN && state.base === PROPID_BITCOIN ?
+			(state.trade > PROPID_COIN && state.base === PROPID_BITCOIN ?
 				"Cannot trade Omni asset with Bitcoin" : null)),
 		[state.trade, state.base]);
 

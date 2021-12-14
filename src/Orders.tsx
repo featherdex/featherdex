@@ -15,9 +15,9 @@ import useTimeCache from './timecache';
 import api from './api';
 
 import {
-	PROPID_BITCOIN, PROPID_FEATHERCOIN, OMNI_START_HEIGHT, MIN_CHANGE,
-	OMNI_EXPLORER_ENDPOINT, COIN_EXPLORER_ENDPOINT, EMPTY_TX_VSIZE, TX_I_VSIZE,
-	TX_O_VSIZE, OPRETURN_ORDER_VSIZE, OrderAction
+	PROPID_BITCOIN, PROPID_COIN, MIN_CHANGE, OMNI_EXPLORER_ENDPOINT,
+	COIN_EXPLORER_ENDPOINT, EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE,
+	OPRETURN_ORDER_VSIZE, OrderAction
 } from './constants';
 
 import {
@@ -41,7 +41,7 @@ export type Data = {
 
 const Orders = () => {
 	const {
-		settings, getClient, getPendingOrders
+		settings, getClient, getConstants, getPendingOrders
 	} = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
 	const [active, setActive] = React.useState<string[]>([]);
@@ -51,7 +51,8 @@ const Orders = () => {
 
 	const myTradesCache = useTimeCache((ts, te) => {
 		const client = getClient();
-		return !!client ? api(client).listMyAssetTrades(ts, te) : null
+		return !!client ?
+			api(client).listMyAssetTrades(getConstants().COIN_NAME, ts, te) : null
 	}, t => t.block);
 
 	const onContextMenu = (event: React.MouseEvent<HTMLSpanElement, MouseEvent>) => {
@@ -59,114 +60,117 @@ const Orders = () => {
 		show(event, { id: event.currentTarget.id });
 	}
 
-	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
-		{
-			Header: '',
-			accessor: 'cancel',
-			width: 40,
-		},
-		{
-			Header: 'Time',
-			accessor: 'time',
-			width: 145,
-			Cell: (props: Record<string, any>) => {
-				if (!props.value) return "";
-
-				const v = props.value;
-				const time = v.time ?
-					DateTime.fromSeconds(v.time).toISO().replace("T",
-						" ").slice(0, -10) + " UTC" : "";
-
-				if (!v.txid) return <span>{time}</span>;
-				else {
-					const onOmni = () =>
-						sendOpenLink(`${OMNI_EXPLORER_ENDPOINT}/tx/${v.txid}`);
-					const onFeather = () =>
-						sendOpenLink(`${COIN_EXPLORER_ENDPOINT}/tx/${v.txid}`);
-
-					return <>
-						<span id={`orders-time-${v.txid}`} title={v.txid}
-							onContextMenu={onContextMenu}>
-							{time}
-						</span>
-						<Menu id={`orders-time-${v.txid}`} theme={theme.dark}
-							animation={false}>
-							<Item onClick={() => {
-								ipcRenderer.send("clipboard:copy", v.txid);
-								notify("success", "Copied txid to clipboard",
-									`Copied ${v.txid} to clipboard`);
-							}}>
-								Copy Transaction ID to clipboard...
-							</Item>
-							<Item onClick={onOmni}>
-								Open in Omnifeather Explorer...
-							</Item>
-							<Item onClick={onFeather}>
-								Open in Feathercoin Explorer...
-							</Item>
-						</Menu>
-					</>;
-				}
+	const columns: Column<Record<string, any>>[] = React.useMemo(() => {
+		const { COIN_OMNI_NAME, COIN_NAME, COIN_TICKER } = getConstants();
+		return settings ? [
+			{
+				Header: '',
+				accessor: 'cancel',
+				width: 40,
 			},
-		},
-		{
-			Header: 'Status',
-			accessor: 'status',
-			width: 60,
-			Cell: props => props.value,
-		},
-		{
-			Header: 'Asset Buy ID',
-			accessor: 'idBuy',
-			width: 80,
-			Cell: props => props.value === PROPID_BITCOIN ? <i>BTC</i> :
-				(props.value === PROPID_FEATHERCOIN ? <i>FTC</i> :
-					<b>{props.value}</b>),
-		},
-		{
-			Header: 'Asset Sell ID',
-			accessor: 'idSell',
-			width: 80,
-			Cell: props => props.value === PROPID_BITCOIN ? <i>BTC</i> :
-				(props.value === PROPID_FEATHERCOIN ? <i>FTC</i> :
-					<b>{props.value}</b>),
-		},
-		{
-			Header: 'Quantity',
-			accessor: 'quantity',
-			width: 80,
-			Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
-				"decimal", "none"),
-		},
-		{
-			Header: 'Remaining',
-			accessor: 'remaining',
-			width: 80,
-			Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
-				"decimal", "none"),
-		},
-		{
-			Header: 'Price',
-			accessor: 'price',
-			width: 80,
-			Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
-				"decimal", "none"),
-		},
-		{
-			Header: 'Fee',
-			accessor: 'fee',
-			width: 75,
-			Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
-				"decimal", "none"),
-		},
-		{
-			Header: 'Total',
-			accessor: 'total',
-			width: 90,
-			Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
-				"decimal", "none"),
-		},
-	] : [],
+			{
+				Header: 'Time',
+				accessor: 'time',
+				width: 145,
+				Cell: (props: Record<string, any>) => {
+					if (!props.value) return "";
+
+					const v = props.value;
+					const time = v.time ?
+						DateTime.fromSeconds(v.time).toISO().replace("T",
+							" ").slice(0, -10) + " UTC" : "";
+
+					if (!v.txid) return <span>{time}</span>;
+					else {
+						const onOmni = () =>
+							sendOpenLink(`${OMNI_EXPLORER_ENDPOINT}/tx/${v.txid}`);
+						const onFeather = () =>
+							sendOpenLink(`${COIN_EXPLORER_ENDPOINT}/tx/${v.txid}`);
+
+						return <>
+							<span id={`orders-time-${v.txid}`} title={v.txid}
+								onContextMenu={onContextMenu}>
+								{time}
+							</span>
+							<Menu id={`orders-time-${v.txid}`} theme={theme.dark}
+								animation={false}>
+								<Item onClick={() => {
+									ipcRenderer.send("clipboard:copy", v.txid);
+									notify("success", "Copied txid to clipboard",
+										`Copied ${v.txid} to clipboard`);
+								}}>
+									Copy Transaction ID to clipboard...
+							</Item>
+								<Item onClick={onOmni}>
+									Open in {COIN_OMNI_NAME} Explorer...
+							</Item>
+								<Item onClick={onFeather}>
+									Open in {COIN_NAME} Explorer...
+							</Item>
+							</Menu>
+						</>;
+					}
+				},
+			},
+			{
+				Header: 'Status',
+				accessor: 'status',
+				width: 60,
+				Cell: props => props.value,
+			},
+			{
+				Header: 'Asset Buy ID',
+				accessor: 'idBuy',
+				width: 80,
+				Cell: props => props.value === PROPID_BITCOIN ? <i>BTC</i> :
+					(props.value === PROPID_COIN ? <i>{COIN_TICKER}</i> :
+						<b>{props.value}</b>),
+			},
+			{
+				Header: 'Asset Sell ID',
+				accessor: 'idSell',
+				width: 80,
+				Cell: props => props.value === PROPID_BITCOIN ? <i>BTC</i> :
+					(props.value === PROPID_COIN ? <i>{COIN_TICKER}</i> :
+						<b>{props.value}</b>),
+			},
+			{
+				Header: 'Quantity',
+				accessor: 'quantity',
+				width: 80,
+				Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
+					"decimal", "none"),
+			},
+			{
+				Header: 'Remaining',
+				accessor: 'remaining',
+				width: 80,
+				Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
+					"decimal", "none"),
+			},
+			{
+				Header: 'Price',
+				accessor: 'price',
+				width: 80,
+				Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
+					"decimal", "none"),
+			},
+			{
+				Header: 'Fee',
+				accessor: 'fee',
+				width: 75,
+				Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
+					"decimal", "none"),
+			},
+			{
+				Header: 'Total',
+				accessor: 'total',
+				width: 90,
+				Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
+					"decimal", "none"),
+			},
+		] : []
+	},
 		[settings]
 	);
 
@@ -247,6 +251,7 @@ const Orders = () => {
 
 	const refreshData = async () => {
 		const API = api(getClient());
+		const { OMNI_START_HEIGHT, COIN_MARKET } = getConstants();
 
 		const blockHeight = await
 			handlePromise(repeatAsync(API.getBlockchainInfo, 5)(),
@@ -272,8 +277,8 @@ const Orders = () => {
 				}}>Cancel</a>,
 				time: { time: v.time },
 				status: v.status,
-				idBuy: v.buysell === "buy" ? v.id : PROPID_FEATHERCOIN,
-				idSell: v.buysell === "sell" ? v.id : PROPID_FEATHERCOIN,
+				idBuy: v.buysell === "buy" ? v.id : PROPID_COIN,
+				idSell: v.buysell === "sell" ? v.id : PROPID_COIN,
 				quantity: v.quantity,
 				remaining: v.remaining,
 				price: v.price,
@@ -306,37 +311,32 @@ const Orders = () => {
 		let bittrexData: Data[] = [];
 
 		if (settings.apikey.length > 0 && settings.apisecret.length > 0)
-			bittrexData = (await
-				API.getBittrexOrders(settings.apikey, settings.apisecret)
-					.catch(err => {
-						handleError(err);
-						return [] as BittrexOrder[];
-					})).map((v: BittrexOrder) =>
-					({
-						cancel: <a href="#" onClick={() =>
-							handlePromise(repeatAsync(API.cancelBittrexOrder, 3)
-								(settings.apikey, settings.apisecret, v.id)
-								.then(v => notify("success",
-									"Cancelled order", toTradeInfo(v))),
-								`Failed to cancel Bittrex order ${toTradeInfo(v)}`)
-						}>Cancel</a>,
-						time: {
-							time: Math.floor(DateTime.fromISO(v.createdAt)
-								.toSeconds()) as UTCTimestamp
-						},
-						status: "PLACED",
-						idBuy: v.direction === "BUY" ?
-							PROPID_FEATHERCOIN : PROPID_BITCOIN,
-						idSell: v.direction === "SELL" ?
-							PROPID_FEATHERCOIN : PROPID_BITCOIN,
-						quantity: parseFloat(v.quantity),
-						remaining: parseFloat(v.quantity)
-							- parseFloat(v.fillQuantity),
-						price: parseFloat(v.limit),
-						fee: parseFloat(v.commission),
-						total: parseFloat(v.limit)
-							* parseFloat(v.fillQuantity),
-					}));
+			bittrexData = (await API.getBittrexOrders(settings.apikey,
+				settings.apisecret, COIN_MARKET).catch(err => {
+					handleError(err);
+					return [] as BittrexOrder[];
+				})).map((v: BittrexOrder) =>
+				({
+					cancel: <a href="#" onClick={() =>
+						handlePromise(repeatAsync(API.cancelBittrexOrder, 3)
+							(settings.apikey, settings.apisecret, v.id)
+							.then(v => notify("success",
+								"Cancelled order", toTradeInfo(v))),
+							`Failed to cancel Bittrex order ${toTradeInfo(v)}`)
+					}>Cancel</a>,
+					time: {
+						time: Math.floor(DateTime.fromISO(v.createdAt)
+							.toSeconds()) as UTCTimestamp
+					},
+					status: "PLACED",
+					idBuy: v.direction === "BUY" ? PROPID_COIN : PROPID_BITCOIN,
+					idSell: v.direction === "SELL" ? PROPID_COIN : PROPID_BITCOIN,
+					quantity: parseFloat(v.quantity),
+					remaining: parseFloat(v.quantity) - parseFloat(v.fillQuantity),
+					price: parseFloat(v.limit),
+					fee: parseFloat(v.commission),
+					total: parseFloat(v.limit) * parseFloat(v.fillQuantity),
+				}));
 
 		setData(pendingData.concat(historyData).concat(bittrexData)
 			.sort((a, b) => b.time.time - a.time.time));
