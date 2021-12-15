@@ -160,11 +160,17 @@ const api = (client: typeof Client) => {
 			fetch(`${BITTREX_API_ENDPOINT}/markets/${market}/summary`)
 				.then(r => r.json(), _ => { throw BittrexError; }) as BittrexSummary;
 
+		const trades = await
+			fetch(`${BITTREX_API_ENDPOINT}/markets/${market}/trades`)
+				.then(r => r.json(), _ => { throw BittrexError; }) as BittrexTrade[];
+
+		const lastTime = trades.length > 0 ?
+			DateTime.fromISO(trades[0].executedAt).toLocal() : null;
 		const last = parseFloat(ticker.lastTradeRate);
 		const chgp = parseFloat(summary.percentChange) / 100;
 
 		return {
-			last: last,
+			last: { time: lastTime, price: last },
 			chg: last - last / (chgp + 1),
 			chgp: chgp,
 			bid: parseFloat(ticker.bidRate),

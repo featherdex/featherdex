@@ -284,7 +284,7 @@ declare type RequestOptions = {
 
 declare type Ticker = {
 	market: string,
-	last: number,
+	last: { time: import('luxon').DateTime, price: number },
 	chg: number,
 	chgp: number,
 	bid: number,
@@ -321,6 +321,14 @@ declare type BittrexSummary = {
 	percentChange: string,
 	updatedAt: string,
 }
+
+declare type BittrexTrade = {
+	id: string,
+	executedAt: string,
+	quantity: string,
+	rate: string,
+	takerSide: string,
+};
 
 declare type BittrexNewOrder = {
 	marketSymbol: string,

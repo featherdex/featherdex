@@ -222,10 +222,12 @@ class App extends React.PureComponent<AppProps, AppState> {
 			const trades = allTrades.filter(v =>
 				v.idBuy === propid).sort((a, b) => b.time - a.time);
 
+			let lastTime;
 			let last = 0;
 
 			if (trades.length > 0) {
 				let lastTrade = trades[0];
+				lastTime = DateTime.fromSeconds(lastTrade.time);
 				last = roundn(lastTrade.amount / lastTrade.quantity, 8);
 			}
 
@@ -244,7 +246,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 			marketData.set(asset.id, {
 				market: asset.name,
-				last: last,
+				last: { time: lastTime, price: last },
 				chg: chg,
 				chgp: dayClose ? chg / dayClose : 0,
 				bid: 0,

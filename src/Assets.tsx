@@ -3,6 +3,7 @@
 import React from 'react';
 import useInterval from 'use-interval';
 
+import { DateTime } from 'luxon';
 import { Column } from 'react-table';
 
 import AppContext from './contexts/AppContext';
@@ -14,7 +15,7 @@ import { handlePromise, repeatAsync, toFormattedAmount } from './util';
 
 type Data = {
 	asset: string,
-	last: number,
+	last: { time: DateTime, price: number },
 	chg: number,
 	chgp: number,
 	bid: number,
@@ -55,7 +56,11 @@ const Assets = () => {
 			Header: 'Last',
 			accessor: 'last',
 			width: 75,
-			Cell: props => toFormattedAmount(props.value, settings.numformat, 8),
+			Cell: props =>
+				<span title={props.value.time.setLocale(settings.numformat)
+					.toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS)}>
+					{toFormattedAmount(props.value.price, settings.numformat, 8)}
+				</span>,
 		},
 		{
 			Header: 'Chg',
@@ -99,7 +104,8 @@ const Assets = () => {
 		if (!tickers || !tickers.get(PROPID_COIN)) return;
 
 		const emptyTickerData = {
-			last: 0, chg: 0, chgp: 0, bid: 0, ask: 0, vol: 0
+			last: { time: null as DateTime, price: 0 },
+			chg: 0, chgp: 0, bid: 0, ask: 0, vol: 0
 		};
 
 		const API = api(getClient());
@@ -127,7 +133,7 @@ const Assets = () => {
 				assetData.push({
 					asset: `${COIN_TICKER} (Bittrex)`,
 					quantity: coinbal,
-					value: coinbal * tickerData.last,
+					value: coinbal * tickerData.last.price,
 					...tickerData,
 				});
 			}
@@ -141,7 +147,7 @@ const Assets = () => {
 		const coinData = {
 			asset: `${COIN_TICKER} (wallet)`,
 			quantity: quant,
-			value: quant * tickerData.last,
+			value: quant * tickerData.last.price,
 			...(assetData.length > 0 ? emptyTickerData : tickerData),
 		};
 
@@ -158,7 +164,7 @@ const Assets = () => {
 			assetData.push({
 				asset: `(${asset.propertyid}) ${asset.name}`,
 				quantity: balance,
-				value: assetTicker.last * balance,
+				value: assetTicker.last.price * balance,
 				...assetTicker,
 			});
 		}

@@ -2,6 +2,7 @@
 
 import React from 'react';
 
+import { DateTime } from 'luxon';
 import { Column } from 'react-table';
 
 import AppContext from './contexts/AppContext';
@@ -10,9 +11,7 @@ import Table from './Table';
 import { toFormattedAmount } from './util';
 
 const Markets = () => {
-	const {
-		settings, tickers
-	} = React.useContext(AppContext);
+	const { settings, tickers } = React.useContext(AppContext);
 
 	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
 		{
@@ -25,8 +24,12 @@ const Markets = () => {
 			Header: 'Last',
 			accessor: 'last',
 			width: 80,
-			Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
-				"decimal", "none"),
+			Cell: props =>
+				<span title={props.value.time.setLocale(settings.numformat)
+					.toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS)}>
+					{toFormattedAmount(props.value.price, settings.numformat, 8,
+						"decimal", "none")}
+				</span>,
 		},
 		{
 			Header: 'Chg',
