@@ -58,7 +58,10 @@ const Assets = () => {
 			width: 75,
 			Cell: props =>
 				<span title={props.value.time.setLocale(settings.numformat)
-					.toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS)}>
+					.toLocaleString({
+						...DateTime.DATE_SHORT,
+						...DateTime.TIME_24_WITH_SHORT_OFFSET,
+					})}>
 					{toFormattedAmount(props.value.price, settings.numformat, 8)}
 				</span>,
 		},

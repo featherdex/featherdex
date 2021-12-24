@@ -26,7 +26,10 @@ const Markets = () => {
 			width: 80,
 			Cell: props =>
 				<span title={props.value.time.setLocale(settings.numformat)
-					.toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS)}>
+					.toLocaleString({
+						...DateTime.DATE_MED,
+						...DateTime.TIME_24_WITH_SHORT_OFFSET,
+					})}>
 					{toFormattedAmount(props.value.price, settings.numformat, 8,
 						"decimal", "none")}
 				</span>,

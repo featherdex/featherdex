@@ -59,8 +59,13 @@ const History = () => {
 
 				const v = props.value;
 				const time = v.time ?
-					DateTime.fromSeconds(v.time).toISO().replace("T",
-						" ").slice(0, -10) + " UTC" : "";
+					DateTime.fromSeconds(v.time).setLocale(settings.numformat)
+						.toLocaleString({
+							...DateTime.DATE_SHORT,
+							...DateTime.TIME_24_WITH_SHORT_OFFSET,
+							month: "2-digit",
+							day: "2-digit",
+						}) : "";
 
 				if (!v.txid) return <span>{time}</span>;
 				else {
