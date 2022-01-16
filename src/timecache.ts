@@ -31,6 +31,7 @@ const useTimeCache = <T>(requestCallback: (timeStart: number,
 
 		let trimData = state.data;
 
+		// Prune prunable data and outside of time range
 		if (trimData.length > 0)
 			trimData = trimData.filter(v => {
 				const t = timeifierCallback(v);
@@ -39,36 +40,26 @@ const useTimeCache = <T>(requestCallback: (timeStart: number,
 
 		let newData: T[] = [];
 
+		// Append data before time range
 		if (timeStart < state.timeLast.start) {
 			const req: T[] = await repeatAsync(requestCallback, 5)(timeStart,
-				Math.min(timeEnd, Math.max(state.timeLast.start - 1, timeStart)))
-				.catch(e => {
-					handleError(e, "error");
-					return null;
+				Math.min(timeEnd, state.timeLast.start - 1)).catch(e => {
+					release();
+					throw e;
 				});
-
-			if (req === null) {
-				release();
-				return state.data;
-			}
 
 			newData.push(...req);
 		}
 
 		newData.push(...trimData);
 
+		// Append data after time range
 		if (timeEnd > state.timeLast.end) {
 			const req: T[] = await repeatAsync(requestCallback, 5)
-				(Math.max(Math.min(state.timeLast.end + 1, timeEnd), timeStart),
-					timeEnd).catch(e => {
-						handleError(e, "error");
-						return null;
-					});
-
-			if (req === null) {
-				release();
-				return state.data;
-			}
+				(Math.max(state.timeLast.end + 1, timeStart), timeEnd).catch(e => {
+					release();
+					throw e;
+				});
 
 			newData.push(...req);
 		}
@@ -110,6 +101,7 @@ export class TimeCache<T> {
 
 		let trimData = this.data;
 
+		// Prune prunable data and outside of time range
 		if (trimData.length > 0)
 			trimData = trimData.filter(v => {
 				const t = this.timeifierCallback(v);
@@ -118,43 +110,33 @@ export class TimeCache<T> {
 
 		let newData: T[] = [];
 
+		// Append data before time range
 		if (timeStart < this.timeLast.start) {
 			const req: T[] = await repeatAsync(this.requestCallback, 5)(timeStart,
-				Math.min(timeEnd, Math.max(this.timeLast.start - 1, timeStart)))
-				.catch(e => {
-					handleError(e, "error");
-					return null;
+				Math.min(timeEnd, this.timeLast.start - 1)).catch(e => {
+					release();
+					throw e;
 				});
-
-			if (req === null) {
-				release();
-				return this.data;
-			}
 
 			newData.push(...req);
 		}
 
 		newData.push(...trimData);
 
+		// Append data after time range
 		if (timeEnd > this.timeLast.end) {
 			const req: T[] = await repeatAsync(this.requestCallback, 5)
-				(Math.max(Math.min(this.timeLast.end + 1, timeEnd), timeStart),
-					timeEnd).catch(e => {
-						handleError(e, "error");
-						return null;
-					});
-
-			if (req === null) {
-				release();
-				return this.data;
-			}
+				(Math.max(this.timeLast.end + 1, timeStart), timeEnd).catch(e => {
+					release();
+					throw e;
+				});
 
 			newData.push(...req);
 		}
 
 		this.data = [...newData];
 		this.timeLast = { start: timeStart, end: timeEnd };
-		
+
 		release();
 		return newData;
 	}

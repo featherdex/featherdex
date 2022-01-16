@@ -13,7 +13,7 @@ import {
 	MIN_ACCEPT_FEE, BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_COIN
 } from './constants';
 
-import { roundn } from './util';
+import { log, roundn } from './util';
 
 const api = (client: typeof Client) => {
 	function API() { };
@@ -117,7 +117,7 @@ const api = (client: typeof Client) => {
 		const height = (await API.getBlockchainInfo()).blocks;
 
 		if (time >= DateTime.now().toSeconds())
-			return height;
+			return -1;
 		if (time <= genesisTime) return 1;
 
 		let lower = 1, upper = height;
@@ -127,7 +127,13 @@ const api = (client: typeof Client) => {
 			const lowerNode = blockTimeStruct.cache.le(time),
 				upperNode = blockTimeStruct.cache.ge(time);
 
-			if (lowerNode.valid) lower = lowerNode.value;
+			if (lowerNode.valid) {
+				lower = lowerNode.value;
+				// If the time is above the lower node's time and the lower node's
+				// block is the blockchain height then we're completely out of range
+				// and must invalidate
+				if (time > lowerNode.key && lower === height) return -1;
+			}
 			if (upperNode.valid) upper = upperNode.value;
 		}
 
@@ -135,12 +141,12 @@ const api = (client: typeof Client) => {
 
 		// Perform binary search
 		do {
-			const mid = Math.ceil((lower + upper) / 2);
+			const mid = Math.floor((lower + upper) / 2);
 			const block = await API.getBlock(await API.getBlockHash(mid),
 				blockTimeStruct);
 
-			if (time < block.time) upper = mid - 1;
-			else lower = mid;
+			if (time <= block.time) upper = mid;
+			else lower = mid + 1;
 		} while (lower !== upper);
 
 		return lower;
@@ -250,13 +256,8 @@ const api = (client: typeof Client) => {
 		return totalIn - totalOut;
 	};
 
-	API.listAssetTrades = async (start: UTCTimestamp, end: UTCTimestamp,
-		genesisTime: UTCTimestamp, blockTimeStruct?: BlockTimeStruct):
+	API.listAssetTrades = async (first: number, last: number):
 		Promise<AssetTrade[]> => {
-		const [first, last] =
-			[await API.getBlockNumber(start, genesisTime, blockTimeStruct),
-			await API.getBlockNumber(end, genesisTime, blockTimeStruct)];
-
 		const allTXids: string[] =
 			await client.command("omni_listblockstransactions", first, last);
 		const allOmniTXs: (OmniTx & BlockInfo)[] = await
@@ -277,7 +278,7 @@ const api = (client: typeof Client) => {
 					remaining: 0,
 					amount: parseFloat(p.amountpaid),
 					fee: 0, // unused
-				})));
+				}))).sort((a, b) => a.time - b.time);
 	};
 
 	API.listMyAssetTrades = async (coinName: string, startblock?: number,
@@ -421,6 +422,9 @@ const api = (client: typeof Client) => {
 	API.sendRawTransaction = (signedtx: string): Promise<string> =>
 		client.command("sendrawtransaction", signedtx);
 
+	API.getBittrexMktHistory = (market: string): Promise<BittrexTrade[]> =>
+		fetch(`${BITTREX_API_ENDPOINT}/markets/${market}/trades`).then(r =>
+			r.json(), _ => { throw BittrexError; });
 	API.getBittrexBalance = (apiKey: string, apiSecret: string, currency: string):
 		Promise<BittrexBalance> =>
 		doAuthRequest(apiKey, apiSecret,

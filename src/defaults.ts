@@ -56,12 +56,18 @@ export const defaultLayout = {
 											{
 												"type": "tab",
 												"id": "#1011",
+												"name": "Time & Sales",
+												"component": "sales"
+											},
+											{
+												"type": "tab",
+												"id": "#1012",
 												"name": "Info",
 												"component": "info"
 											},
 											{
 												"type": "tab",
-												"id": "#1012",
+												"id": "#1013",
 												"name": "Terminal",
 												"component": "terminal"
 											}

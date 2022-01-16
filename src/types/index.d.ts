@@ -48,6 +48,7 @@ declare type RPCSettings = Record<string, any>;
 declare type PlatformConstants = {
 	COIN_NAME: string,
 	COIN_TICKER: string,
+	COIN_BASE_TICKER: string,
 	COIN_OMNI_NAME: string,
 	COIN_LOGO_PATH: string,
 	COIN_URL: string,

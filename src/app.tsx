@@ -28,6 +28,7 @@ import Orders from './Orders';
 import Info from './Info';
 import Ticker from './Ticker';
 import Markets from './Markets';
+import Sales from './Sales';
 import { TimeCache } from './timecache';
 import Platforms from './platforms';
 import AppContext from './contexts/AppContext';
@@ -36,7 +37,7 @@ import { PROPID_BITCOIN, PROPID_COIN } from './constants';
 import {
 	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf, writeLayout,
 	isNumber, isBoolean, parseBoolean, handlePromise, log, Queue, roundn, toCandle,
-	isBarData, tradeToLineData, constants
+	isBarData, tradeToLineData, constants, handleError
 } from './util';
 
 import 'react-contexify/dist/ReactContexify.css';
@@ -74,6 +75,7 @@ export type AppMethods = {
 	clearStaleOrders: () => void,
 	getBlockTimes: () => Tree<number, number>,
 	addBlockTime: (time: number, height: number) => void,
+	refreshTrades: () => Promise<AssetTrade[]>,
 };
 
 class App extends React.PureComponent<AppProps, AppState> {
@@ -87,13 +89,10 @@ class App extends React.PureComponent<AppProps, AppState> {
 	pendingOrders: Order[] = [];
 	blockTimes = createRBTree<number, number>();
 	tickers = new Map<number, Ticker>();
-	tradesCache = new TimeCache((ts, te) => {
+	tradesCache = new TimeCache((s, e) => {
 		const client = this.getClient();
-		return !!client ?
-			api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp,
-				this.getConstants().GENESIS_TIME as UTCTimestamp,
-				{ cache: this.getBlockTimes(), push: this.addBlockTime }) : null
-	}, t => t.time);
+		return !!client ? api(client).listAssetTrades(s, e) : null
+	}, t => t.block);
 
 	methods: AppMethods;
 
@@ -137,6 +136,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 			clearStaleOrders: this.clearStaleOrders,
 			getBlockTimes: this.getBlockTimes,
 			addBlockTime: this.addBlockTime,
+			refreshTrades: this.refreshTrades,
 		};
 
 		this.state = {
@@ -192,6 +192,13 @@ class App extends React.PureComponent<AppProps, AppState> {
 			this.pendingOrders = [...arr];
 	}
 
+	refreshTrades = async () => {
+		const { OMNI_START_HEIGHT } = this.getConstants();
+		const height = (await api(this.client).getBlockchainInfo()).blocks;
+
+		return this.tradesCache.refresh(OMNI_START_HEIGHT, height);
+	}
+
 	updateTickers = async () => {
 		if (!this.client) return;
 
@@ -199,7 +206,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 		const now = DateTime.now().toUTC();
 		const yesterday = now.minus({ days: 1 }).startOf("day");
 
-		const { COIN_NAME, COIN_MARKET, OMNI_START_TIME } = this.getConstants();
+		const { COIN_NAME, COIN_MARKET } = this.getConstants();
 
 		let tickerData = await handlePromise(repeatAsync(API.getCoinTicker, 5)
 			(COIN_MARKET), `Could not get ${COIN_NAME} ticker data`);
@@ -212,8 +219,12 @@ class App extends React.PureComponent<AppProps, AppState> {
 			"Could not get open exchange orders");
 		if (dexsells === null) return;
 
-		const allTrades: AssetTrade[] = await
-			this.tradesCache.refresh(OMNI_START_TIME, Math.floor(now.toSeconds()));
+		const allTrades: AssetTrade[] = await this.refreshTrades().catch(e => {
+			handleError(e, "error");
+			return null;
+		});
+
+		if (allTrades === null) return;
 
 		for (let asset of this.state.assetList) {
 			const propid = asset.id;
@@ -312,11 +323,11 @@ class App extends React.PureComponent<AppProps, AppState> {
 			});
 		else if (component === "markets")
 			return panel(<Markets />);
+		else if (component === "sales")
+			return panel(<Sales />);
 		else if (component === "terminal")
 			return panel(<Terminal
-				color='green'
-				backgroundColor='black'
-				barColor='black'
+				color='green' backgroundColor='black' barColor='black'
 				style={{
 					fontWeight: "bold",
 					fontSize: "1em"
@@ -343,8 +354,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 						}, []).map(x => isNumber(x) ? parseFloat(x) :
 							(isBoolean(x) ? parseBoolean(x) : stripQuotes(x)));
 
-					this.client.command(stripQuotes(c), ...parseArgs)
-						.then((r: Object) =>
+					this.client.command(stripQuotes(c),
+						...parseArgs).then((r: Object) =>
 							print(JSON.stringify(r, null, 2)),
 							(err: Error) => print(err.message));
 				}}
@@ -420,7 +431,6 @@ class App extends React.PureComponent<AppProps, AppState> {
 export const appRef = React.createRef<App>();
 
 export const addTab = (title: string, component: string) => {
-	console.log(component)
 	let layoutRef = appRef.current.state.layoutRef;
 	if (layoutRef && layoutRef.current)
 		layoutRef.current.addTabToActiveTabSet({

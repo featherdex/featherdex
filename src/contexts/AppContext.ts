@@ -27,5 +27,6 @@ const AppContext =
 		clearStaleOrders: null,
 		getBlockTimes: null,
 		addBlockTime: null,
+		refreshTrades: null,
 	});
 export default AppContext;

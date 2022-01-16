@@ -1,5 +1,6 @@
 import React from 'react';
 import urlRegex from 'url-regex';
+import styled from 'styled-components';
 
 import AppContext from './contexts/AppContext';
 
@@ -54,6 +55,32 @@ const NFTTable = ({ data }: NFTTableProps) => {
 		columns={columns} data={data} overflow select />;
 };
 
+const C = {
+	InfoTable: styled.div`
+	display: flex;
+	flex-flow: column;
+	height: 100%;`,
+	InfoBody: styled.div`flex: 1 1 auto;`,
+	InfoContent: styled.div`
+	padding: 0 16px 0 16px;
+	font-size: 10pt;
+	& td:first-child {
+		width: 150px;
+	}`,
+	InfoHeader: styled.div`
+	display: flex;
+	flex: 0 1 auto;
+	& > *:first-child {
+		height: 24px;
+		width: 50px;
+		padding: 0 8px 0 8px;
+	}
+	& > *:nth-child(2) {
+		flex-grow: 1;
+		min-width: 200px;
+	}`,
+}
+
 const Info = () => {
 	const { settings, getClient, getConstants } = React.useContext(AppContext);
 
@@ -82,7 +109,7 @@ const Info = () => {
 					}} />
 			</td>;
 
-		return <div className="info-content">
+		return <C.InfoContent>
 			<h2>{info.name}</h2>
 			<table>
 				<tbody>
@@ -140,7 +167,7 @@ const Info = () => {
 				<h3>NFT Data</h3>
 				<NFTTable data={nftInfo} />
 			</> : <></>}
-		</div>;
+		</C.InfoContent>;
 	}
 
 	React.useEffect(() => {
@@ -209,18 +236,18 @@ const Info = () => {
 
 	}, [asset]);
 
-	return <div className="info-table">
-		<div className="info-header">
+	return <C.InfoTable>
+		<C.InfoHeader>
 			<span>Asset: </span>
 			<AssetSearch setAssetCallback={setAsset} />
-		</div>
-		<div className="info-body">
+		</C.InfoHeader>
+		<C.InfoBody>
 			{assetInfo ? format(assetInfo) :
 				<div className="empty">
 					<span style={{ fontSize: 12 }}>Enter an asset</span>
 				</div>}
-		</div>
-	</div>;
+		</C.InfoBody>
+	</C.InfoTable>;
 };
 
 export default Info;

@@ -3,6 +3,7 @@
 import React from 'react';
 import useResizeAware from 'react-resize-aware';
 import useInterval from 'use-interval';
+import styled from 'styled-components';
 
 import { DateTime } from 'luxon';
 import {
@@ -24,9 +25,34 @@ import {
 	inverseOHLC, toLine, toCandle, tradeToLineData
 } from './util';
 
+const C = {
+	ChartHeader: styled.div`
+	display: block;
+	min-width: 580px;
+	& > * {
+		display: inline-block;
+	}
+	& * {
+		z-index: 2;
+	}`,
+	ChartSearch: styled.div`
+	min-width: 150px;
+	width: 45%;
+	& > * {
+		display: inline-block;
+	}
+	& > div:not(.chart-button) {
+		width: calc(50% - 12px);
+	}`,
+	ChartButtons: styled.div`
+	& > * {
+		display: inline-block;
+	}`,
+};
+
 const Chart = () => {
 	const {
-		getClient, getConstants, getBlockTimes, addBlockTime
+		getClient, getConstants, refreshTrades
 	} = React.useContext(AppContext);
 
 	const [idBuy, setIDBuy] = React.useState(-1);
@@ -39,14 +65,6 @@ const Chart = () => {
 	const [lastUpdate, setLastUpdate] = React.useState(DateTime.now().toUTC());
 
 	const [resizeListener, size] = useResizeAware();
-
-	const tradesCache = useTimeCache((ts, te) => {
-		const client = getClient();
-		return !!client ?
-			api(client).listAssetTrades(ts as UTCTimestamp, te as UTCTimestamp,
-				getConstants().GENESIS_TIME as UTCTimestamp,
-				{ cache: getBlockTimes(), push: addBlockTime }) : null
-	}, t => t.time);
 
 	const uid = React.useMemo(() => uniqueId("chart-"), []);
 
@@ -230,13 +248,12 @@ const Chart = () => {
 			if (idBuy === PROPID_BITCOIN || idSell === PROPID_BITCOIN) {
 				let firstdata = await
 					repeatAsync(API.getCoinOHLCRecent, API_RETRIES)
-						(COIN_MARKET, interval).catch(err => {
-							handleError(err);
-							return [] as BarData[];
-						});
-
-				firstdata =
-					firstdata.filter(v => v.time >= timeBoundary.toSeconds());
+						(COIN_MARKET, interval).then(arr =>
+							arr.filter(v =>
+								v.time >= timeBoundary.toSeconds()), err => {
+									handleError(err);
+									return [] as BarData[];
+								});
 
 				let chunks: Promise<BarData[]>[] = [];
 
@@ -272,14 +289,16 @@ const Chart = () => {
 				let assetdata: (BarData | WhitespaceData)[] = [];
 
 				const firstDate = subInt(timeBoundary, interval, chunkCount);
-				const trades: LineData[] =
-					(await tradesCache.refresh(Math.max(OMNI_START_TIME,
-						Math.floor(firstDate.toSeconds())),
-						Math.floor(DateTime.now().toSeconds())))
-						.filter(trade =>
-							trade.idBuy === (idBuy > PROPID_COIN ?
-								idBuy : idSell)).sort((a, b) =>
-									a.time - b.time).map(tradeToLineData);
+				const trades: LineData[] = await refreshTrades().then(data =>
+					data.filter(trade =>
+						trade.time >= firstDate.toSeconds()
+						&& trade.idBuy === (idBuy > PROPID_COIN ?
+							idBuy : idSell)).sort((a, b) =>
+								a.time - b.time).map(tradeToLineData), e => {
+									handleError(e, "error");
+									return null;
+								});
+				if (trades === null) return;
 
 				// TODO change above when arbitrary token trades supported
 
@@ -393,16 +412,15 @@ const Chart = () => {
 
 			let assetdata: (BarData | WhitespaceData)[];
 			if (idBuy > PROPID_COIN || idSell > PROPID_COIN) {
-				const data = await API.listAssetTrades(candleTime,
-					Math.floor(now.toSeconds()) as UTCTimestamp,
-					GENESIS_TIME as UTCTimestamp)
-					.catch(err => {
-						handleError(err);
-						return [] as AssetTrade[];
-					});
-				const trades = data.filter(v =>
-					v.idSell === (idBuy > PROPID_COIN ?
-						idBuy : idSell)).map(tradeToLineData);
+				const trades: LineData[] = await refreshTrades().then(arr =>
+					arr.filter(trade => trade.time >= candleTime
+						&& trade.idSell === (idBuy > PROPID_COIN ?
+							idBuy : idSell)).map(tradeToLineData), e => {
+								handleError(e, "error");
+								return null;
+							});
+				if (trades === null) return;
+
 				assetdata = toCandle(trades, rawInterval);
 			}
 
@@ -472,15 +490,15 @@ const Chart = () => {
 	}, [chart, size]);
 
 	return <>
-		<div className="chart-header">
-			<div className="chart-header-search">
+		<C.ChartHeader>
+			<C.ChartSearch>
 				<AssetSearch setAssetCallback={setIDBuy}
 					disableCallback={toggleChart} zIndex={2} />
 				<div className="chart-button chart-swap">&harr;</div>
 				<AssetSearch setAssetCallback={setIDSell}
 					disableCallback={toggleChart} zIndex={2} />
-			</div>
-			<div className="chart-header-buttons">
+			</C.ChartSearch>
+			<C.ChartButtons>
 				<div className="chart-hspace"></div>
 				<label className="chart-button">
 					<input type="radio" name="chart-candle"
@@ -553,8 +571,8 @@ const Chart = () => {
 						onChange={handleChange} />
 					<span className="checkmark">W</span>
 				</label>
-			</div>
-		</div>
+			</C.ChartButtons>
+		</C.ChartHeader>
 		<div id={uid} className="chart">{resizeListener}</div>
 	</>;
 };

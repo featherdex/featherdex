@@ -110,37 +110,6 @@ div.ok-cancel > button {
 	margin-left: 12px;
 }
 
-label.form-element {
-	display: block;
-}
-
-div.about-body {
-	height: calc(100% - 32px - 2*19.92px - 35px - 2*6px);
-	overflow: auto;
-}
-
-div.about-body {
-	display: flex;
-}
-
-div.about-body > .about-logo {
-	margin: 16px 64px 0 64px;
-	flex: 0.3;
-}
-
-div.about-body > .about-logo > img {
-	width: 100%;
-}
-
-div.about-body > .about-text {
-	padding-right: 32px;
-	flex: 0.7;
-}
-
-div.terminal-base {
-	user-select: text;
-}
-
 div.assets-table {
 	width: 100%;
 }
@@ -196,39 +165,9 @@ div.chart {
 	height: calc(100% - 31px);
 }
 
-.chart-header {
-	display: block;
-	min-width: 580px;
-}
-
-.chart-header > * {
-	display: inline-block;
-}
-
-.chart-header * {
-	z-index: 2;
-}
-
-.chart-header-search {
-	min-width: 150px;
-	width: 45%;
-}
-
-.chart-header-search > * {
-	display: inline-block;
-}
-
-.chart-header-search > div:not(.chart-button) {
-	width: calc(50% - 12px);
-}
-
 .chart-swap {
 	text-align: center;
 	top: -5px;
-}
-
-.chart-header-buttons > * {
-	display: inline-block;
 }
 
 div.chart-hspace {
@@ -289,48 +228,9 @@ input.chart-area ~ .checkmark {
 	background-color: rgb(65, 135, 211);
 }
 
-.terminal-base {
-	min-height: unset;
-}
-
-.trader-header {
-	text-align: center;
-}
-
-div.trader-body {
-	padding: 4px 8px 0 8px;
-}
-
-div.trader, div.orderbook {
-	height: 100%;
-	box-sizing: border-box;
-}
-
-div.trader {
-	float: left;
-	width: 460px;
-}
-
-.trader-inputs {
-	width: 100%;
-	margin-bottom: 8px;
-}
-
-.trader-inputs td {
-	height: 30px;
-	padding: 0;
-}
-
 input.coin {
 	caret-color: red;
 	width: 11em;
-}
-
-div.orderbook {
-	display: flex;
-	min-width: 600px;
-	width: auto;
-	overflow: auto;
 }
 
 div.order-table {
@@ -398,68 +298,6 @@ div.empty {
 
 .wrapper input {
 	padding-left: 6px !important;
-}
-
-div.info-table {
-	display: flex;
-	flex-flow: column;
-	height: 100%;
-}
-
-div.info-header {
-	display: flex;
-	flex: 0 1 auto;
-}
-
-div.info-header > *:first-child {
-	height: 24px;
-	width: 50px;
-	padding: 0 8px 0 8px;
-}
-
-div.info-header > *:nth-child(2) {
-	flex-grow: 1;
-	min-width: 200px;
-}
-
-div.info-body {
-	flex: 1 1 auto;
-}
-
-div.info-content {
-	padding: 0 16px 0 16px;
-	font-size: 10pt;
-}
-
-div.info-content td:first-child {
-	width: 150px;
-}
-
-div.ticker-table {
-	display: flex;
-	background: rgb(37, 37, 44);
-	position: sticky;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	min-width: 250px;
-	height: 24px;
-}
-
-div.ticker-table > * {
-	display: inline-flex;
-	padding: 2px 4px 2px 4px;
-	font-size: 10pt;
-}
-
-div.ticker-body {
-	flex-grow: 100;
-	overflow: hidden;
-}
-
-div.ticker-body > * {
-	display: inline-block;
-	padding: 0 8px 0 8px;
 }
 
 .number-pos {

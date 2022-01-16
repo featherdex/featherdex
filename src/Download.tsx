@@ -34,8 +34,7 @@ const C = {
 		Container: styled.div`
 	display: flex;
 	height: 100px;
-	flex-direction: row;
-	`,
+	flex-direction: row;`,
 		Body: styled.div`
 	width: 90%;
 	padding: 4px 12px 4px 12px;
@@ -43,8 +42,7 @@ const C = {
 		white-space: nowrap;
 		overflow: hidden;
 		padding-bottom: 4px;
-	}
-		`,
+	}`,
 		X: styled.div`
 	display: flex;
 	width: 10%;
@@ -53,8 +51,7 @@ const C = {
   	align-items: center;
   	&:hover {
     	background-color: rgba(255, 255, 255, 0.1);
-  	}
-		`,
+  	}`,
 		Status: styled.div`float: left;`,
 		Progress: styled.div`float: right;`,
 	},
@@ -63,14 +60,12 @@ const C = {
 	width: 100%;
 	height: 100%;
 	display: flex;
-	flex-direction: column;
-		`,
+	flex-direction: column;`,
 		Body: styled.div`
 	flex: 1;
 	display: flex;
 	flex-flow: column wrap;
-	overflow: auto;
-		`,
+	overflow: auto;`,
 	},
 };
 

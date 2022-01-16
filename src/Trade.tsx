@@ -664,10 +664,12 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 	}
 
 	return <>
-		<div className="trader-body">
-			<table className="trader-inputs">
+		<C.Trader.Body>
+			<C.Trader.Inputs>
 				<thead><tr>
-					<th className="trader-header" colSpan={4}>Place a trade</th>
+					<th style={{ textAlign: "center" }} colSpan={4}>
+						Place a trade
+					</th>
 				</tr></thead>
 				<tbody>
 					<tr>
@@ -701,7 +703,9 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 							fontSize: "12pt",
 							textAlign: "right",
 						}}>
-							{state.trade === 1 ? "BTC" : "FTC"}
+							{state.trade === PROPID_COIN ?
+								getConstants().COIN_BASE_TICKER :
+								getConstants().COIN_TICKER}
 						</td>
 						<td style={{ fontSize: "9pt", textAlign: "right" }}>
 							Quantity:
@@ -775,7 +779,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 									className="form-field"
 									checked={state.isNoHighFees}
 									onChange={handleChange} />
-									Don&apos;t pay high accept fees
+								Don&apos;t pay high accept fees
 							</label>
 							<label style={
 								{
@@ -788,7 +792,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 									className="form-field"
 									checked={state.isConfirm}
 									onChange={handleChange} />
-									Confirm Placement
+								Confirm Placement
 							</label>
 							<button style={{
 								display: "inline-block",
@@ -797,8 +801,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 						</td>
 					</tr>
 				</tbody>
-			</table>
-		</div>
+			</C.Trader.Inputs>
+		</C.Trader.Body>
 	</>;
 };
 
@@ -829,7 +833,29 @@ const C = {
 		height: 50%;
 	}
 	`
-	}
+	},
+	Trader: {
+		Trader: styled.div`
+		height: 100%;
+		box-sizing: border-box;
+		float: left;
+		width: 460px;`,
+		Body: styled.div`padding: 4px 8px 0 8px;`,
+		Inputs: styled.table`
+		width: 100%;
+		margin-bottom: 8px;
+		& td {
+			height: 30px;
+			padding: 0;
+		}`,
+	},
+	Orderbook: styled.div`
+	height: 100%;
+	box-sizing: border-box;
+	display: flex;
+	min-width: 600px;
+	width: auto;
+	overflow: auto;`
 }
 
 const CoinInput = ({ value, dispatch, step, digits = 8,
@@ -870,12 +896,12 @@ const Trade = () => {
 	const [state, dispatch] = React.useReducer(reducerTrade, initialState);
 
 	return <>
-		<div className="trader">
+		<C.Trader.Trader>
 			<Trader state={state} dispatch={dispatch} />
-		</div>
-		<div className="orderbook">
+		</C.Trader.Trader>
+		<C.Orderbook>
 			<Orderbook state={state} dispatch={dispatch} />
-		</div>
+		</C.Orderbook>
 	</>;
 };
 

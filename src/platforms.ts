@@ -2,6 +2,7 @@ const Platforms: Record<string, PlatformConstants> = {
 	FEATHERCOIN: {
 		COIN_NAME: "Feathercoin",
 		COIN_TICKER: "FTC",
+		COIN_BASE_TICKER: "BTC",
 		COIN_OMNI_NAME: "Omnifeather",
 		COIN_LOGO_PATH: "../img/logo-ftc-256px.png",
 		COIN_URL: "https://feathercoin.com/",
@@ -18,6 +19,7 @@ const Platforms: Record<string, PlatformConstants> = {
 	LITECOIN: {
 		COIN_NAME: "Litecoin",
 		COIN_TICKER: "LTC",
+		COIN_BASE_TICKER: "BTC",
 		COIN_OMNI_NAME: "OmniLite",
 		COIN_LOGO_PATH: "../img/logo-ltc-256px.png",
 		COIN_URL: "https://litecoin.com/",
@@ -34,6 +36,7 @@ const Platforms: Record<string, PlatformConstants> = {
 	BITCOIN: {
 		COIN_NAME: "Bitcoin",
 		COIN_TICKER: "BTC",
+		COIN_BASE_TICKER: "USD",
 		COIN_OMNI_NAME: "Omni",
 		COIN_LOGO_PATH: "../img/logo-btc-256px.png",
 		COIN_URL: "https://bitcoin.org/",

@@ -1,5 +1,6 @@
 import React from 'react';
 import Modal from 'react-modal';
+import styled from 'styled-components';
 
 import Icon from '../img/icon-256px.png';
 import { VERSION_STRING } from './constants';
@@ -8,6 +9,23 @@ import './app.css';
 type AboutProps = {
 	isOpen: boolean,
 	closeModalCallback: () => void,
+};
+
+
+const C = {
+	AboutBody: styled.div`
+	height: calc(100% - 32px - 2*19.92px - 35px - 2*6px);
+	overflow: auto;
+	display: flex;`,
+	AboutLogo: styled.div`
+	margin: 16px 64px 0 64px;
+	flex: 0.3;
+	& > img {
+		width: 100%;
+	}`,
+	AboutText: styled.div`
+	padding-right: 32px;
+	flex: 0.7;`,
 };
 
 export default function About({ isOpen, closeModalCallback }: AboutProps) {
@@ -29,14 +47,10 @@ export default function About({ isOpen, closeModalCallback }: AboutProps) {
 			}}
 		>
 			<h2>About</h2>
-			<div className="about-body">
-				<div className="about-logo">
-					<img src={Icon} alt="FeatherDeX logo" />
-				</div>
-				<div className="about-text">
-					<p>
-						FeatherDeX Trader<br />version {VERSION_STRING}
-					</p>
+			<C.AboutBody>
+				<C.AboutLogo><img src={Icon} alt="FeatherDeX logo" /></C.AboutLogo>
+				<C.AboutText>
+					<p>FeatherDeX Trader<br />version {VERSION_STRING}</p>
 					<p>
 						THIS SOFTWARE IS PROVIDED BY THE AUTHOR
 						&quot;AS IS&quot; AND ANY EXPRESS OR IMPLIED WARRANTIES,
@@ -53,11 +67,9 @@ export default function About({ isOpen, closeModalCallback }: AboutProps) {
 						USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
 						OF SUCH DAMAGE.
 					</p>
-					<p>
-						Built with Node.js and Electron
-					</p>
-				</div>
-			</div>
+					<p>Built with Node.js and Electron</p>
+				</C.AboutText>
+			</C.AboutBody>
 			<div className="ok-cancel">
 				<button onClick={closeModalCallback}>Okay</button>
 			</div>

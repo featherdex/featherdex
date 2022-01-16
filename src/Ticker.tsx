@@ -1,5 +1,6 @@
 import React from 'react';
 import useInterval from 'use-interval';
+import styled from 'styled-components';
 
 import AppContext from './contexts/AppContext';
 import api from './api';
@@ -19,6 +20,30 @@ const TickerElement =
 			{prefix}{price}
 		</div>;
 	};
+
+const C = {
+	TickerTable: styled.div`
+	display: flex;
+	background: rgb(37, 37, 44);
+	position: sticky;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	min-width: 250px;
+	height: 24px;
+	& > * {
+		display: inline-flex;
+		padding: 2px 4px 2px 4px;
+		font-size: 10pt;
+	}`,
+	TickerBody: styled.div`
+	flex-grow: 100;
+	overflow: hidden;
+	& > * {
+		display: inline-block;
+		padding: 0 8px 0 8px;
+	}`,
+};
 
 const TickerMarquee = () => {
 	const { settings, getClient } = React.useContext(AppContext);
@@ -53,9 +78,7 @@ const TickerMarquee = () => {
 			price={getPrice(BTCRates, "EUR")} key={uniqueId("ticker-")} />,
 	];
 
-	return <div className="ticker-body">
-		{tickerList}
-	</div>;
+	return <C.TickerBody>{tickerList}</C.TickerBody>;
 };
 
 const Height = () => {
@@ -74,11 +97,11 @@ const Height = () => {
 }
 
 const Ticker = () => {
-	return <div className="ticker-table">
+	return <C.TickerTable>
 		<Clock prefix="Local Time: " />
 		<Height />
 		<TickerMarquee />
-	</div>;
+	</C.TickerTable>;
 };
 
 export default Ticker;

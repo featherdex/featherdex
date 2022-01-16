@@ -112,6 +112,11 @@ app.whenReady().then(() => {
 					label: "Top Markets",
 					click: () => win.webContents.send("add:tab",
 						{ title: "Top Markets", component: "markets" }),
+				},
+				{
+					label: "Time and Sales",
+					click: () => win.webContents.send("add:tab",
+						{ title: "Time & Sales", component: "sales" }),
 				}]
 			},
 			{ role: 'reload' },

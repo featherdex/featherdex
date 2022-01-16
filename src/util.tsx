@@ -39,7 +39,7 @@ export const log = require('simple-node-logger').createSimpleLogger({
 	timestampFormat: 'YYYY-MM-DD HH:mm:ss.SSS'
 });
 
-log.setLevel('debug');
+log.setLevel('info');
 
 export function uniqueId(prefix = 'id') {
 	lastId++;
