@@ -46,14 +46,19 @@ const C = {
 };
 
 const TickerMarquee = () => {
-	const { settings, getClient } = React.useContext(AppContext);
+	const { settings, getClient, getConstants } = React.useContext(AppContext);
+
+	const {
+		COIN_TICKER, COIN_MARKET, COIN_MARKET_ALT, COIN_MARKET_ALT2,
+		COIN_BASE_TICKER, COIN_BASE_TICKER_ALT, COIN_BASE_TICKER_ALT2
+	} = getConstants();
 
 	const [coinRates, setCoinRates] = React.useState<CoinbaseRate>(null);
 	const [BTCRates, setBTCRates] = React.useState<CoinbaseRate>(null);
 
 	useInterval(async () => {
 		const API = api(getClient());
-		setCoinRates(await repeatAsync(API.getExchangeRates, 5)("FTC")
+		setCoinRates(await repeatAsync(API.getExchangeRates, 5)(COIN_TICKER)
 			.catch(_ => null));
 		setBTCRates(await repeatAsync(API.getExchangeRates, 5)("BTC")
 			.catch(_ => null));
@@ -65,13 +70,16 @@ const TickerMarquee = () => {
 			true, currency) as string : "-";
 
 	let tickerList = [
-		<TickerElement prefix={`FTC-USD: `}
-			price={getPrice(coinRates, "USD", 4)} key={uniqueId("ticker-")} />,
-		<TickerElement prefix={`FTC-EUR: `}
-			price={getPrice(coinRates, "EUR", 4)} key={uniqueId("ticker-")} />,
-		<TickerElement prefix={`FTC-BTC: `}
-			price={getPrice(coinRates, "BTC", 8).replace(/BTC./, BITCOIN_SYMBOL)}
+		...(COIN_TICKER !== "BTC" ? [<TickerElement prefix={`${COIN_MARKET_ALT}: `}
+			price={getPrice(coinRates, COIN_BASE_TICKER_ALT, 4)}
 			key={uniqueId("ticker-")} />,
+		<TickerElement prefix={`${COIN_MARKET_ALT2}: `}
+			price={getPrice(coinRates, COIN_BASE_TICKER_ALT2, 4)}
+			key={uniqueId("ticker-")} />,
+		<TickerElement prefix={`${COIN_MARKET}: `}
+			price={getPrice(coinRates, COIN_BASE_TICKER, 8).replace(/BTC./,
+				BITCOIN_SYMBOL)}
+			key={uniqueId("ticker-")} />] : []),
 		<TickerElement prefix={`BTC-USD: `}
 			price={getPrice(BTCRates, "USD")} key={uniqueId("ticker-")} />,
 		<TickerElement prefix={`BTC-EUR: `}
@@ -93,7 +101,7 @@ const Height = () => {
 	}, 5000, true);
 
 	return <div style={{ fontSize: "10pt" }}>Blockchain Height:&nbsp;
-	{toFormattedAmount(height, settings.numformat, 0, "decimal", "none", true)}</div>
+		{toFormattedAmount(height, settings.numformat, 0, "decimal", "none", true)}</div>
 }
 
 const Ticker = () => {
