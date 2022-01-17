@@ -65,6 +65,7 @@ declare type PlatformConstants = {
 	GENESIS_TIME: number,
 	OMNI_START_HEIGHT: number,
 	OMNI_START_TIME: number,
+	MIN_CHANGE: number,
 };
 
 declare type Property = {

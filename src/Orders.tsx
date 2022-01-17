@@ -15,9 +15,8 @@ import useTimeCache from './timecache';
 import api from './api';
 
 import {
-	PROPID_BITCOIN, PROPID_COIN, MIN_CHANGE, OMNI_EXPLORER_ENDPOINT,
-	COIN_EXPLORER_ENDPOINT, EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE,
-	OPRETURN_ORDER_VSIZE, OrderAction
+	PROPID_BITCOIN, PROPID_COIN, OMNI_EXPLORER_ENDPOINT, COIN_EXPLORER_ENDPOINT,
+	EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE, OPRETURN_ORDER_VSIZE, OrderAction
 } from './constants';
 
 import {
@@ -182,6 +181,8 @@ const Orders = () => {
 	const sendCancel = async (trade: AssetTrade) => {
 		const client = getClient();
 		const API = api(client);
+		const consts = getConstants();
+		const { MIN_CHANGE } = consts;
 
 		let cancelFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
 			+ TX_O_VSIZE + OPRETURN_ORDER_VSIZE).catch(e => {
@@ -232,9 +233,9 @@ const Orders = () => {
 
 		let canceltx;
 		{
-			const errmsg = `Failed to cancel order ${toTradeInfo(trade)}`;
+			const errmsg = `Failed to cancel order ${toTradeInfo(consts, trade)}`;
 
-			const rawtx = await createRawOrder(client, trade.idSell,
+			const rawtx = await createRawOrder(consts, client, trade.idSell,
 				OrderAction.ORDER_CANCEL, utxo, cancelFee);
 			if (rawtx === null) return;
 
@@ -248,10 +249,10 @@ const Orders = () => {
 		waitForTx(client, canceltx).then(_ => {
 			cancelledOrders.push(trade.txid);
 			notify("success", "Cancelled order",
-				`Cancelled order ${toTradeInfo(trade)}`);
+				`Cancelled order ${toTradeInfo(consts, trade)}`);
 		});
 		notify("info", "Order cancellation sent",
-			`Sent in cancellation for order ${toTradeInfo(trade)}`);
+			`Sent in cancellation for order ${toTradeInfo(consts, trade)}`);
 	}
 
 	const refreshData = async () => {
@@ -278,7 +279,7 @@ const Orders = () => {
 				cancel: v.finalizing ? <></> : <a href="#" onClick={() => {
 					v.cancel();
 					notify("success", "Canceled pending order",
-						`Canceled order ${toTradeInfo(v)}`);
+						`Canceled order ${toTradeInfo(getConstants(), v)}`);
 				}}>Cancel</a>,
 				time: { time: v.time },
 				status: v.status,
@@ -326,8 +327,9 @@ const Orders = () => {
 						handlePromise(repeatAsync(API.cancelBittrexOrder, 3)
 							(settings.apikey, settings.apisecret, v.id)
 							.then(v => notify("success",
-								"Cancelled order", toTradeInfo(v))),
-							`Failed to cancel Bittrex order ${toTradeInfo(v)}`)
+								"Cancelled order", toTradeInfo(getConstants(), v))),
+							"Failed to cancel Bittrex order "
+							+ toTradeInfo(getConstants(), v))
 					}>Cancel</a>,
 					time: {
 						time: Math.floor(DateTime.fromISO(v.createdAt)

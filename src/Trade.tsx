@@ -18,7 +18,7 @@ import {
 	notify, log
 } from './util';
 import {
-	SATOSHI, MIN_CHANGE, TRADE_FEERATE, MIN_TRADE_FEE, UP_SYMBOL, DOWN_SYMBOL,
+	SATOSHI, TRADE_FEERATE, MIN_TRADE_FEE, UP_SYMBOL, DOWN_SYMBOL,
 	PROPID_BITCOIN, PROPID_COIN, ACCOUNT_LABEL, OrderAction
 } from './constants';
 
@@ -184,10 +184,6 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		const name = target.name;
 
 		switch (name) {
-			case "baseasset":
-				cDispatch("set_base")(value === "btc" ? PROPID_BITCOIN :
-					(value === "ftc" ? PROPID_COIN : -1));
-				break;
 			case "ordertype":
 				cDispatch("set_ordertype")(value);
 				break;
@@ -198,6 +194,9 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 	}
 
 	const doTrade = async () => {
+		const consts = getConstants();
+		const { COIN_MARKET, COIN_TICKER, COIN_BASE_TICKER, MIN_CHANGE } = consts;
+
 		// case: unselected
 		if (state.trade === -1 || state.base === -1) {
 			alert("Please select assets to " +
@@ -224,8 +223,10 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			return;
 		}
 
-		if (state.price < MIN_CHANGE) {
-			alert("Price too low");
+		// case: trade value is below dust
+		if (state.price * state.quantity < MIN_CHANGE) {
+			alert("Total trade is too small, value must be at least"
+				+ ` ${MIN_CHANGE} ${COIN_TICKER}`);
 			return;
 		}
 
@@ -240,10 +241,10 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 		const tradeInfo =
 			`${state.orderType.toUpperCase()} ${state.buysell.toUpperCase()}`
-			+ ` ${state.quantity.toFixed(8)}`
-			+ ` ${state.trade === PROPID_COIN ? "FTC" : `[ASSET #${state.trade}]`}`
-			+ ` @${state.price.toFixed(8)} ${state.base === PROPID_COIN ?
-				"FTC" : "BTC"}`;
+			+ ` ${state.quantity.toFixed(8)} `
+			+ (state.trade === PROPID_COIN ? COIN_TICKER : `[ASSET #${state.trade}]`)
+			+ ` @${state.price.toFixed(8)} `
+			+ (state.base === PROPID_COIN ? COIN_TICKER : COIN_BASE_TICKER);
 
 		if (state.isConfirm) {
 			const c = confirm("Are you sure you want to place this trade? "
@@ -253,7 +254,6 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 		const client = getClient();
 		const API = api(client);
-		const { COIN_MARKET } = getConstants();
 
 		// Omni trade
 		if (state.base === 1) {
@@ -262,11 +262,11 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 					(API.getCoinBalance, 5)(), "Could not get wallet balance");
 				if (coins === null) return;
 
-				// case: insufficient balance, FTC
+				// case: insufficient balance, coin
 				if (state.total > coins) {
 					handleError(new Error("Insufficient balance, "
-						+ `have: ${coins.toFixed(8)} FTC, need: `
-						+ `${state.total.toFixed(8)} FTC`), "error");
+						+ `have: ${coins.toFixed(8)} ${COIN_TICKER}, need: `
+						+ `${state.total.toFixed(8)} ${COIN_TICKER}`), "error");
 					return;
 				}
 			} else {
@@ -293,7 +293,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			await API.makeBittrexOrder(settings.apikey, settings.apisecret,
 				COIN_MARKET, state.buysell, state.orderType, state.quantity,
 				state.price).then((v: BittrexOrder) => {
-					notify("success", "Placed order", toTradeInfo(v));
+					notify("success", "Placed order", toTradeInfo(consts, v));
 				}, err => handleError(err, "error"));
 			return;
 		}
@@ -329,11 +329,12 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			log.debug("utxos")
 			log.debug(utxos)
 
-			const fillOrders = await getFillOrders(client, state.trade,
-				state.quantity, state.isNoHighFees).then(v => v.fillOrders, e => {
-					handleError(e, "error");
-					return null;
-				}) as Awaited<ReturnType<typeof getFillOrders>>["fillOrders"];
+			const fillOrders = await getFillOrders(consts, client, state.trade,
+				state.quantity, state.isNoHighFees).then(v =>
+					v.fillOrders, e => {
+						handleError(e, "error");
+						return null;
+					}) as Awaited<ReturnType<typeof getFillOrders>>["fillOrders"];
 			if (fillOrders === null) return;
 
 			log.debug("fillOrders")
@@ -346,7 +347,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			}
 
 			const tradeFee = await
-				estimateBuyFee(client, fillOrders).catch(e => {
+				estimateBuyFee(consts, client, fillOrders).catch(e => {
 					handleError(e, "error");
 					return null;
 				}) as Awaited<ReturnType<typeof estimateBuyFee>>;
@@ -357,7 +358,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 			// case: set fee is smaller than minimum
 			if (state.fee < tradeFee.totalFee) {
-				alert(`Fee too low, need at least ${tradeFee} FTC`);
+				alert(`Fee too low, need at least ${tradeFee} ${COIN_TICKER}`);
 				return;
 			}
 
@@ -423,8 +424,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				log.debug("createRawAccept")
 
 				const acceptFee = tradeFee.acceptFees.get(i.address);
-				const accept = await createRawAccept(client, i.address, state.trade,
-					i.quantity, utxo, acceptFee).catch(e => {
+				const accept = await createRawAccept(consts, client, i.address,
+					state.trade, i.quantity, utxo, acceptFee).catch(e => {
 						handleError(e, "error");
 						handleError(new Error(skipErrorMsg), "warn");
 						return null;
@@ -455,13 +456,13 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 			// Create and sign pay transaction, pass to Order object for later
 			{
-				const pretx: string = await
-					createRawPay(client, acceptedOrders.map(order =>
+				const pretx: string = await createRawPay(consts, client,
+					acceptedOrders.map(order =>
 						({ address: order.address, amount: order.payAmount })),
-						utxo, tradeFee.payFee).catch(e => {
-							handleError(e);
-							return null;
-						});
+					utxo, tradeFee.payFee).catch(e => {
+						handleError(e);
+						return null;
+					});
 				if (pretx === null) return;
 
 				finaltx = await
@@ -483,8 +484,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			if (addressAssets.length === 0) {
 				handleError(new Error("No available assets found for "
 					+ `[ASSET #${state.trade}]. Check that addresses with assets`
-					+ "have enough FTC for transactions."),
-					"error");
+					+ `have enough ${COIN_TICKER} for transactions.`), "error");
 				return;
 			}
 
@@ -537,8 +537,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				log.debug(address)
 			}
 
-			const tradeFee = await
-				estimateSellFee(client, reshuffleAddresses.length).catch(e => {
+			const tradeFee = await estimateSellFee(consts, client,
+				reshuffleAddresses.length).catch(e => {
 					handleError(e, "error");
 					return null;
 				}) as Awaited<ReturnType<typeof estimateSellFee>>;
@@ -588,8 +588,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 				log.debug(`i=${i} nextAddress=${nextAddress} amount=${amount}`)
 				log.debug("createRawSend")
-				const rawtx = await createRawSend(client, nextAddress, state.trade,
-					amount, utxo, tradeFee.sendFee).catch(e => {
+				const rawtx = await createRawSend(consts, client, nextAddress,
+					state.trade, amount, utxo, tradeFee.sendFee).catch(e => {
 						handleError(e, "error");
 						return null;
 					});
@@ -617,7 +617,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			// Now from [address] create the order transaction
 			{
 				log.debug("createRawOrder")
-				const rawtx = await createRawOrder(client, state.trade,
+				const rawtx = await createRawOrder(consts, client, state.trade,
 					OrderAction.ORDER_NEW, utxo, tradeFee.postFee, state.quantity,
 					state.price).catch(e => {
 						handleError(e, "error");
@@ -645,7 +645,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		log.debug("add pending order")
 		addPendingOrder(order);
 
-		notify("success", "Created new order", toTradeInfo(order));
+		notify("success", "Created new order", toTradeInfo(consts, order));
 
 		log.debug("run order")
 		order.run();

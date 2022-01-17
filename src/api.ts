@@ -109,7 +109,7 @@ const api = (client: typeof Client) => {
 		client.command("getnetworkinfo");
 	API.estimateFee = (): Promise<number> =>
 		client.command("estimatesmartfee", BLOCK_WAIT).then((v: FeeEstimate) =>
-			v.feerate ? v.feerate : COIN_FEERATE);
+			v.feerate ?? COIN_FEERATE);
 
 	// Get the first block on or after a timestamp and return the height
 	API.getBlockNumber = async (time: UTCTimestamp, genesisTime: UTCTimestamp,

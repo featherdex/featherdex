@@ -21,8 +21,7 @@ import Platforms from './platforms';
 import {
 	APP_NAME, LAYOUT_NAME, CONF_NAME, SATOSHI, COIN_FEERATE,
 	MAX_ACCEPT_FEE, EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE, OPRETURN_ACCEPT_VSIZE,
-	OPRETURN_SEND_VSIZE, OPRETURN_ORDER_VSIZE, MIN_CHANGE, EXODUS_CHANGE,
-	ACCOUNT_LABEL, OrderAction
+	OPRETURN_SEND_VSIZE, OPRETURN_ORDER_VSIZE, ACCOUNT_LABEL, OrderAction
 } from './constants';
 import { defaultLayout, defaultRPCSettings, defaultSettings } from './defaults';
 
@@ -387,7 +386,9 @@ export function tradeToLineData(trade: AssetTrade) {
 	};
 }
 
-export function toTradeInfo(v: BittrexOrder | Order | AssetTrade) {
+export function toTradeInfo(consts: PlatformConstants,
+	v: BittrexOrder | Order | AssetTrade) {
+	const { COIN_TICKER, COIN_BASE_TICKER } = consts;
 	const isBittrexOrder =
 		(x: BittrexOrder | Order | AssetTrade): x is BittrexOrder =>
 			!!(x as BittrexOrder).type;
@@ -397,27 +398,28 @@ export function toTradeInfo(v: BittrexOrder | Order | AssetTrade) {
 		let tradeInfo = `${v.type} ${v.direction} `;
 
 		if (v.type === "LIMIT")
-			tradeInfo += `${parseFloat(v.quantity).toFixed(8)} FTC`
-				+ ` @${v.limit} BTC, filled `;
+			tradeInfo += `${parseFloat(v.quantity).toFixed(8)} ${COIN_TICKER}`
+				+ ` @${v.limit} ${COIN_BASE_TICKER}, filled `;
 
-		tradeInfo += `${v.fillQuantity} FTC for ${v.proceeds} BTC,`
-			+ ` fees ${v.commission} BTC`;
+		tradeInfo +=
+			`${v.fillQuantity} ${COIN_TICKER} for ${v.proceeds} ${COIN_BASE_TICKER},`
+			+ ` fees ${v.commission} ${COIN_BASE_TICKER}`;
 
 		return tradeInfo;
 	} else if (isOrder(v))
 		return `${v.buysell.toUpperCase()} Asset #${v.id} `
-			+ `${v.quantity.toFixed(8)}@${v.price.toFixed(8)} FTC, `
-			+ `fees ${v.fee.toFixed(8)} FTC`;
+			+ `${v.quantity.toFixed(8)}@${v.price.toFixed(8)} ${COIN_TICKER}, `
+			+ `fees ${v.fee.toFixed(8)} ${COIN_TICKER}`;
 	else
 		return `Buy Asset #${v.idBuy} Sell Asset #${v.idSell}, `
 			+ `${v.quantity.toFixed(8)}, ${v.remaining.toFixed(8)} remaining, `
-			+ `${v.fee.toFixed(8)} FTC fees`;
+			+ `${v.fee.toFixed(8)} ${COIN_TICKER} fees`;
 }
 
-export async function estimateTxFee(client: typeof Client,
-	rawtx: string, size?: number) {
+export async function estimateTxFee(client: typeof Client, rawtx: string,
+	size?: number) {
 	const API = api(client);
-	const vsize = size ? size :
+	const vsize = size ??
 		await repeatAsync(API.decodeTransaction, 3)(rawtx).then(v => {
 			if (!v.vsize) throw new Error("Could not decode transaction");
 			return v.vsize;
@@ -428,12 +430,14 @@ export async function estimateTxFee(client: typeof Client,
 	return Math.ceil(vsize / 1000.0 * fee * (1 / SATOSHI)) * SATOSHI;
 }
 
-export async function estimateBuyFee(client: typeof Client, orders: FillOrder[]) {
+export async function estimateBuyFee(consts: PlatformConstants,
+	client: typeof Client, orders: FillOrder[]) {
+	const { MIN_CHANGE } = consts;
+
 	let defaultAcceptFee = await estimateTxFee(client, "",
-		EMPTY_TX_VSIZE + TX_I_VSIZE
-		+ 2 * TX_O_VSIZE + OPRETURN_ACCEPT_VSIZE);
+		EMPTY_TX_VSIZE + TX_I_VSIZE + 2 * TX_O_VSIZE + OPRETURN_ACCEPT_VSIZE);
 	let payFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
-		+ (orders.length + 1) * TX_O_VSIZE);
+		+ (orders.length + 2) * TX_O_VSIZE);
 
 	let acceptFees = orders.reduce((map, v) =>
 		map.set(v.address, Math.max(defaultAcceptFee, v.minFee)),
@@ -441,12 +445,14 @@ export async function estimateBuyFee(client: typeof Client, orders: FillOrder[])
 
 	return {
 		acceptFees, payFee,
-		totalFee: roundn(sum([...acceptFees.values()]) + payFee
-			+ EXODUS_CHANGE + MIN_CHANGE, 8)
+		totalFee: roundn(sum([...acceptFees.values()]) + payFee + 2 * MIN_CHANGE, 8)
 	};
 }
 
-export async function estimateSellFee(client: typeof Client, reshufflect: number) {
+export async function estimateSellFee(consts: PlatformConstants,
+	client: typeof Client, reshufflect: number) {
+	const { MIN_CHANGE } = consts;
+
 	let sendFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
 		+ TX_O_VSIZE + OPRETURN_SEND_VSIZE);
 	let postFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
@@ -458,9 +464,10 @@ export async function estimateSellFee(client: typeof Client, reshufflect: number
 	};
 }
 
-export async function createRawSend(client: typeof Client, recipient: string,
-	propid: number, amount: number, inUTXO: UTXO, fee = 0) {
+export async function createRawSend(consts: PlatformConstants, client: typeof Client,
+	recipient: string, propid: number, amount: number, inUTXO: UTXO, fee: number) {
 	const API = api(client);
+	const { MIN_CHANGE } = consts;
 
 	const payload = await repeatAsync(API.createPayloadSend, 5)
 		(propid, amount).catch(_ => {
@@ -488,9 +495,11 @@ export async function createRawSend(client: typeof Client, recipient: string,
 	return rawtx;
 }
 
-export async function createRawAccept(client: typeof Client, seller: string,
-	propid: number, amount: number, inUTXO: UTXO, fee = 0) {
+export async function createRawAccept(consts: PlatformConstants,
+	client: typeof Client, seller: string, propid: number, amount: number,
+	inUTXO: UTXO, fee: number) {
 	const API = api(client);
+	const { MIN_CHANGE } = consts;
 
 	const payload = await repeatAsync(API.createPayloadAccept, 5)
 		(propid, amount).catch(_ => {
@@ -518,20 +527,20 @@ export async function createRawAccept(client: typeof Client, seller: string,
 	return rawtx;
 }
 
-export async function createRawPay(client: typeof Client,
-	orders: { address: string, amount: number }[], inUTXO: UTXO, fee = 0) {
+export async function createRawPay(consts: PlatformConstants, client: typeof Client,
+	orders: { address: string, amount: number }[], inUTXO: UTXO, fee: number) {
 	const API = api(client);
-	const { EXODUS_ADDRESS } = await constants(client);
+	const { MIN_CHANGE, EXODUS_ADDRESS } = consts;
 
 	const total = sum(orders.map(v => v.amount));
-	const change = roundn(inUTXO.amount - EXODUS_CHANGE - total - fee, 8);
+	const change = roundn(inUTXO.amount - MIN_CHANGE - total - fee, 8);
 
 	if (change < MIN_CHANGE)
 		throw new Error("UTXO not large enough"
-			+ `input=${inUTXO.amount}, total=${total}, fee=${fee + EXODUS_CHANGE}`);
+			+ `input=${inUTXO.amount}, total=${total}, fee=${fee + MIN_CHANGE}`);
 
-	let outs: RawTxBlueprint["outs"] = [{ [inUTXO.address]: change },
-	{ [EXODUS_ADDRESS]: EXODUS_CHANGE }];
+	let outs: RawTxBlueprint["outs"] =
+		[{ [inUTXO.address]: change }, { [EXODUS_ADDRESS]: MIN_CHANGE }];
 	outs.push(...orders.map(order =>
 		({ [order.address]: roundn(order.amount, 8) })));
 
@@ -544,9 +553,11 @@ export async function createRawPay(client: typeof Client,
 	return rawtx;
 }
 
-export async function createRawOrder(client: typeof Client, propid: number,
-	action: OrderAction, inUTXO: UTXO, fee = 0, quantity = 0, price = 0) {
+export async function createRawOrder(consts: PlatformConstants,
+	client: typeof Client, propid: number, action: OrderAction, inUTXO: UTXO,
+	fee = 0, quantity = 0, price = 0) {
 	const API = api(client);
+	const { MIN_CHANGE } = consts;
 
 	const payload = await handlePromise(repeatAsync(API.createPayloadOrder, 5)
 		(...[propid, quantity, price, action,
@@ -592,10 +603,10 @@ export async function getPendingAccepts(client: typeof Client, propid?: number,
 }
 
 // Get a list of orders to fill based on the asset ID and quantity
-export async function getFillOrders(client: typeof Client, propid: number,
-	quantity: number, isNoHighFees: boolean) {
+export async function getFillOrders(consts: PlatformConstants, client: typeof Client,
+	propid: number, quantity: number, isNoHighFees: boolean) {
 	const API = api(client);
-	const { COIN_NAME } = await constants(client);
+	const { COIN_NAME } = consts;
 
 	// Get orderbook sells
 	const sells: DexSell[] = await repeatAsync
@@ -655,7 +666,7 @@ export async function getFillOrders(client: typeof Client, propid: number,
 			log.debug("exiting loop")
 			fillOrders.push({
 				address: i.seller,
-				quantity: fillRemaining,
+				quantity: roundn(fillRemaining, 8),
 				payAmount: roundn(fillRemaining * price, 8),
 				minFee: parseFloat(i.minimumfee),
 			});
@@ -664,7 +675,7 @@ export async function getFillOrders(client: typeof Client, propid: number,
 
 		fillOrders.push({
 			address: i.seller,
-			quantity: orderAmount,
+			quantity: roundn(orderAmount, 8),
 			payAmount: roundn(orderAmount * price, 8),
 			minFee: parseFloat(i.minimumfee),
 		});

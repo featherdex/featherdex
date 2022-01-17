@@ -129,11 +129,12 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 			if (book.length === 0) estFee = postFee;
 			else {
 				if (state.buysell === "buy") {
-					const { fillOrders, fillRemaining } = await getFillOrders(client,
-						state.trade, state.quantity, state.isNoHighFees).catch(e => {
-							handleError(e, "error");
-							return { fillOrders: null, fillRemaining: null };
-						}) as Awaited<ReturnType<typeof getFillOrders>>;
+					const { fillOrders, fillRemaining } =
+						await getFillOrders(getConstants(), client, state.trade,
+							state.quantity, state.isNoHighFees).catch(e => {
+								handleError(e, "error");
+								return { fillOrders: null, fillRemaining: null };
+							}) as Awaited<ReturnType<typeof getFillOrders>>;
 					if (fillOrders === null) return;
 
 					if (fillOrders.length === 0) {
@@ -141,11 +142,12 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 						return;
 					}
 
-					estFee = await estimateBuyFee(client, fillOrders).then(v =>
-						v.totalFee, e => {
-							handleError(e, "error");
-							return null;
-						});
+					estFee = await
+						estimateBuyFee(getConstants(), client, fillOrders).then(v =>
+							v.totalFee, e => {
+								handleError(e, "error");
+								return null;
+							});
 					if (estFee === null) return;
 
 					if (fillRemaining > 0) estFee += postFee;
@@ -172,7 +174,7 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 						}
 					}
 
-					estFee = await estimateSellFee(client,
+					estFee = await estimateSellFee(getConstants(), client,
 						reshufflect).then(v => v.totalFee, e => {
 							handleError(e, "error");
 							return null;
