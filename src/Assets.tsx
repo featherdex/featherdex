@@ -178,7 +178,9 @@ const Assets = () => {
 	React.useEffect(() => { refreshData(); }, [tickers]);
 	useInterval(refreshData, 5000);
 
-	return <Table className="assets-table" columns={columns} data={data} />;
+	return data.length === 0 ?
+		<div className="empty" style={{ fontSize: 12 }}>No assets</div>
+		: <Table className="assets-table" columns={columns} data={data} />;
 };
 
 export default Assets;

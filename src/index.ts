@@ -1,11 +1,18 @@
+import fs from 'fs';
+import getAppDataPath from 'appdata-path';
+
 import {
 	ipcMain, app, BrowserWindow, Menu, MenuItemConstructorOptions, dialog, shell,
 	clipboard, OpenDialogOptions
 } from 'electron';
 
 import { createWindow } from './util';
+import { APP_NAME } from './constants';
 
 if (require('electron-squirrel-startup')) app.quit();
+
+const rootPath = getAppDataPath(APP_NAME);
+if (!fs.existsSync(rootPath)) fs.mkdirSync(rootPath, { recursive: true });
 
 const isMac = process.platform === "darwin";
 
