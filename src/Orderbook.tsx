@@ -129,9 +129,10 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 			if (book.length === 0) estFee = postFee;
 			else {
 				if (state.buysell === "buy") {
-					const { fillOrders, fillRemaining } =
-						await getFillOrders(getConstants(), client, state.trade,
-							state.quantity, state.isNoHighFees).catch(e => {
+					const { fillOrders, fillRemaining } = await
+						getFillOrders(getConstants(), client, state.trade,
+							state.quantity, state.orderType === "limit" ?
+							state.price : undefined, state.isNoHighFees).catch(e => {
 								handleError(e, "error");
 								return { fillOrders: null, fillRemaining: null };
 							}) as Awaited<ReturnType<typeof getFillOrders>>;

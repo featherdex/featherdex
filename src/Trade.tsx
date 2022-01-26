@@ -330,7 +330,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			log.debug(utxos)
 
 			const fillOrders = await getFillOrders(consts, client, state.trade,
-				state.quantity, state.isNoHighFees).then(v =>
+				state.quantity, state.orderType === "limit" ?
+				state.price : undefined, state.isNoHighFees).then(v =>
 					v.fillOrders, e => {
 						handleError(e, "error");
 						return null;

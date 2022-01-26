@@ -536,8 +536,8 @@ export async function createRawPay(consts: PlatformConstants, client: typeof Cli
 	const change = roundn(inUTXO.amount - MIN_CHANGE - total - fee, 8);
 
 	if (change < MIN_CHANGE)
-		throw new Error("UTXO not large enough"
-			+ `input=${inUTXO.amount}, total=${total}, fee=${fee + MIN_CHANGE}`);
+		throw new Error(`UTXO not large enough input=${inUTXO.amount},`
+			+ ` total=${total}, fee=${roundn(fee + MIN_CHANGE, 8)}`);
 
 	let outs: RawTxBlueprint["outs"] =
 		[{ [inUTXO.address]: change }, { [EXODUS_ADDRESS]: MIN_CHANGE }];
@@ -604,7 +604,7 @@ export async function getPendingAccepts(client: typeof Client, propid?: number,
 
 // Get a list of orders to fill based on the asset ID and quantity
 export async function getFillOrders(consts: PlatformConstants, client: typeof Client,
-	propid: number, quantity: number, isNoHighFees: boolean) {
+	propid: number, quantity: number, price?: number, isNoHighFees = true) {
 	const API = api(client);
 	const { COIN_NAME } = consts;
 
@@ -658,16 +658,18 @@ export async function getFillOrders(consts: PlatformConstants, client: typeof Cl
 
 		const orderAmount = parseFloat(i.amountavailable)
 			+ sum(pendingAccepts.get(i.seller) || []); // pendings are negative
-		const price =
+		const orderPrice =
 			parseFloat(i[`${COIN_NAME.toLowerCase()}desired`])
 			/ parseFloat(i.amountavailable);
+
+		if (orderPrice > price) break;
 
 		if (orderAmount >= fillRemaining) {
 			log.debug("exiting loop")
 			fillOrders.push({
 				address: i.seller,
 				quantity: roundn(fillRemaining, 8),
-				payAmount: roundn(fillRemaining * price, 8),
+				payAmount: roundn(fillRemaining * orderPrice, 8),
 				minFee: parseFloat(i.minimumfee),
 			});
 			break;
@@ -676,7 +678,7 @@ export async function getFillOrders(consts: PlatformConstants, client: typeof Cl
 		fillOrders.push({
 			address: i.seller,
 			quantity: roundn(orderAmount, 8),
-			payAmount: roundn(orderAmount * price, 8),
+			payAmount: roundn(orderAmount * orderPrice, 8),
 			minFee: parseFloat(i.minimumfee),
 		});
 		fillRemaining -= orderAmount;
