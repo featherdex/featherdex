@@ -11,7 +11,6 @@ import isEqual from 'lodash/fp/isEqual';
 
 import { ipcRenderer } from 'electron';
 import { DateTime, Duration } from 'luxon';
-import { UTCTimestamp } from 'lightweight-charts';
 import { Tree } from 'functional-red-black-tree';
 import { Layout, Model, TabNode } from 'flexlayout-react';
 
@@ -36,8 +35,8 @@ import AppContext from './contexts/AppContext';
 import { PROPID_BITCOIN, PROPID_COIN } from './constants';
 import {
 	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf, writeLayout,
-	isNumber, isBoolean, parseBoolean, handlePromise, log, Queue, roundn, toCandle,
-	isBarData, tradeToLineData, constants, handleError
+	isNumber, isBoolean, parseBoolean, handlePromise, Queue, roundn, toCandle,
+	isBarData, tradeToLineData, constants, handleError, setLogLevel, log
 } from './util';
 
 import 'react-contexify/dist/ReactContexify.css';
@@ -110,10 +109,12 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 		this.consts = Platforms.FEATHERCOIN;
 
-		log.debug(`host=${iRPCSettings.rpchost}`);
-		log.debug(`port=${iRPCSettings.rpcport}`);
-		log.debug(`username=${iRPCSettings.rpcuser}`);
-		log.debug(`password=${iRPCSettings.rpcpassword}`);
+		const logger = log();
+
+		logger.debug(`host=${iRPCSettings.rpchost}`);
+		logger.debug(`port=${iRPCSettings.rpcport}`);
+		logger.debug(`username=${iRPCSettings.rpcuser}`);
+		logger.debug(`password=${iRPCSettings.rpcpassword}`);
 
 		api(this.client).isDaemonUp().then((v: boolean) => {
 			if (!v) {
@@ -440,7 +441,11 @@ export const addTab = (title: string, component: string) => {
 		});
 }
 
+ipcRenderer.on("flag:loglevel", (_, level) => setLogLevel(level));
+
 (async () => {
+	ipcRenderer.send("init");
+
 	let initSettings = await readSettings();
 	let rpcSettings = await readRPCConf(initSettings.dconfpath);
 	let initLayout = await readLayout();
@@ -458,8 +463,12 @@ export const addTab = (title: string, component: string) => {
 	ipcRenderer.on("open:about", () => appRef.current.openAbout());
 	ipcRenderer.on("add:tab", (_, msg) => addTab(msg.title, msg.component));
 
+	window.onfocus = _ => ipcRenderer.send("register");
+	window.onblur = _ => ipcRenderer.send("unregister");
+
 	window.onbeforeunload = (e: BeforeUnloadEvent) => {
-		log.debug("onbeforeunload");
+		log().debug("onbeforeunload");
+		ipcRenderer.send("unregister");
 		ipcRenderer.send("quitmsg");
 		if (!!appRef.current && !!appRef.current.state.layout)
 			writeLayout(appRef.current.state.layout.toJson()).then(_ => {
@@ -469,6 +478,8 @@ export const addTab = (title: string, component: string) => {
 
 		e.returnValue = false;
 	};
+
+	ipcRenderer.send("register");
 
 	Modal.setAppElement("#root");
 

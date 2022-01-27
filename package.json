@@ -39,6 +39,7 @@
 	},
 	"scripts": {
 		"start": "electron-forge start",
+		"debug": "electron-forge start -- --debug",
 		"watch": "webpack --mode development --watch",
 		"prebuild": "rimraf ./build/*",
 		"build": "webpack --mode production",

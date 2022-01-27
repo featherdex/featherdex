@@ -3,7 +3,7 @@ import getAppDataPath from 'appdata-path';
 
 import {
 	ipcMain, app, BrowserWindow, Menu, MenuItemConstructorOptions, dialog, shell,
-	clipboard, OpenDialogOptions
+	clipboard, globalShortcut, OpenDialogOptions
 } from 'electron';
 
 import { createWindow } from './util';
@@ -127,7 +127,6 @@ app.whenReady().then(() => {
 				}]
 			},
 			{ role: 'reload' },
-			{ role: 'forceReload' },
 			{ role: 'toggleDevTools' },
 			{ type: 'separator' },
 			{ role: 'resetZoom' },
@@ -159,16 +158,29 @@ app.whenReady().then(() => {
 	const menu = Menu.buildFromTemplate(template);
 	Menu.setApplicationMenu(menu);
 
+	const reload = () => {
+		app.relaunch();
+		win.reload();
+	};
+
+	ipcMain.on("register", () =>
+		globalShortcut.register("CommandOrControl+R", reload));
+	ipcMain.on("unregister", () => globalShortcut.unregister("CommandOrControl+R"));
+
 	ipcMain.on("choose",
 		(_, data: { rcvChannel: string, opts: OpenDialogOptions }) =>
 			dialog.showOpenDialog(data.opts).then(v =>
 				win.webContents.send(data.rcvChannel, v)));
 
-	ipcMain.on("quitmsg", () => {
+	ipcMain.on("quitmsg", () =>
 		dialog.showMessageBox(win, {
 			message: "Shutting down...", type: "none", buttons: []
-		});
-	})
+		}));
+
+	ipcMain.on("init", () => {
+		if (app.commandLine.hasSwitch("debug"))
+			win.webContents.send("flag:loglevel", "debug");
+	});
 });
 
 ipcMain.on("clipboard:copy", (_, text) => clipboard.writeText(text));

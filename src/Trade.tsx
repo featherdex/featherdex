@@ -59,45 +59,60 @@ const reducerTrade =
 		};
 
 		const getFee = (price: number, quantity: number) => {
-			const fee = price * quantity * TRADE_FEERATE;
+			const fee = roundn(price * quantity * TRADE_FEERATE, 8);
 			return fee >= MIN_TRADE_FEE ? fee : MIN_TRADE_FEE;
 		};
 
 		switch (action.type) {
 			case "set_price":
 				{
-					const price = action.payload;
+					const price = roundn(action.payload, 8);
 					let v = { ...state, price: price };
 					if (v.base === PROPID_BITCOIN) {
 						const fee = getFee(price, state.quantity);
-						v = { ...v, fee: fee, total: price * state.quantity + fee };
+						v = {
+							...v, fee,
+							total: roundn(price * state.quantity + fee, 8),
+						};
 					} else
-						v = { ...v, total: price * state.quantity + state.fee };
+						v = {
+							...v,
+							total: roundn(price * state.quantity + state.fee, 8),
+						};
 					return v;
 				}
 			case "set_quantity":
 				{
-					const quantity = action.payload;
+					const quantity = roundn(action.payload, 8);
 					let v = { ...state, quantity: quantity };
 					if (v.base === PROPID_BITCOIN) {
-						const fee = state.price * quantity * 0.003;
-						v = { ...v, fee: fee, total: state.price * quantity + fee };
+						const fee = roundn(state.price * quantity * 0.003, 8);
+						v = {
+							...v, fee,
+							total: roundn(state.price * quantity + fee, 8),
+						};
 					} else
-						v = { ...v, total: state.price * quantity + state.fee };
+						v = {
+							...v,
+							total: roundn(state.price * quantity + state.fee, 8),
+						};
 					return v;
 				}
 			case "set_fee":
-				return {
-					...state, fee: action.payload,
-					total: roundn(state.price * state.quantity + action.payload, 8),
-				};
+				{
+					const fee = roundn(action.payload, 8);
+					return {
+						...state, fee,
+						total: roundn(state.price * state.quantity + fee, 8),
+					};
+				}
 			case "set_total":
-				const fee = state.base === PROPID_BITCOIN ?
-					action.payload * 0.003 / 1.003 : state.fee;
+				const fee = roundn(state.base === PROPID_BITCOIN ?
+					action.payload * 0.003 / 1.003 : state.fee, 8);
 
 				const pretotal = action.payload - fee;
 				const total = Math.max(state.isDivisible ?
-					action.payload : (state.price > 0 ?
+					roundn(action.payload, 8) : (state.price > 0 ?
 						roundn(((action.payload >= state.total ?
 							Math.ceil : Math.floor)
 							(Math.round(pretotal / SATOSHI)
@@ -105,11 +120,9 @@ const reducerTrade =
 							* Math.round(state.price / SATOSHI)
 							+ Math.round(fee / SATOSHI)) * SATOSHI, 8) : fee), fee);
 				return {
-					...state,
-					total: total,
-					fee: fee,
+					...state, total, fee,
 					quantity: state.price === 0 ?
-						0 : (total - fee) / state.price,
+						0 : roundn((total - fee) / state.price, 8),
 				};
 			case "set_divisible":
 				return { ...state, isDivisible: action.payload };
@@ -120,17 +133,15 @@ const reducerTrade =
 			case "set_ordertype":
 				{
 					let v = { ...state, orderType: action.payload };
-					if (v.orderType === "market") {
+					if (v.orderType === "market")
 						v = { ...v, price: getBest(v.buysell) };
-					}
 					return v;
 				}
 			case "set_buysell":
 				return { ...state, buysell: action.payload };
 			case "set_trade":
 				return {
-					...state,
-					trade: action.payload,
+					...state, trade: action.payload,
 					base: action.payload === PROPID_COIN ?
 						PROPID_BITCOIN : PROPID_COIN,
 				};
@@ -194,6 +205,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 	}
 
 	const doTrade = async () => {
+		const logger = log();
 		const consts = getConstants();
 		const { COIN_MARKET, COIN_TICKER, COIN_BASE_TICKER, MIN_CHANGE } = consts;
 
@@ -312,7 +324,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		// check if we need to move balances to a new address because
 		// there is insufficient available coinage in any one address
 		if (state.buysell === "buy") {
-			log.debug("entering buy")
+			logger.debug("entering buy")
 			// Do a rough estimate to check if the fee specified is enough to cover
 			// all subsequent transaction fees
 
@@ -326,8 +338,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				return;
 			}
 
-			log.debug("utxos")
-			log.debug(utxos)
+			logger.debug("utxos")
+			logger.debug(utxos)
 
 			const fillOrders = await getFillOrders(consts, client, state.trade,
 				state.quantity, state.orderType === "limit" ?
@@ -338,8 +350,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 					}) as Awaited<ReturnType<typeof getFillOrders>>["fillOrders"];
 			if (fillOrders === null) return;
 
-			log.debug("fillOrders")
-			log.debug(fillOrders)
+			logger.debug("fillOrders")
+			logger.debug(fillOrders)
 
 			if (fillOrders.length === 0) {
 				handleError(new Error("Could not find any sell orders to fill"),
@@ -354,8 +366,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				}) as Awaited<ReturnType<typeof estimateBuyFee>>;
 			if (tradeFee === null) return;
 
-			log.debug("tradeFee")
-			log.debug(tradeFee)
+			logger.debug("tradeFee")
+			logger.debug(tradeFee)
 
 			// case: set fee is smaller than minimum
 			if (state.fee < tradeFee.totalFee) {
@@ -363,7 +375,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				return;
 			}
 
-			log.debug("find utxo loop")
+			logger.debug("find utxo loop")
 			// Try to find a UTXO that can cover everything
 			for (let i of utxos)
 				if (i.amount >= state.total) {
@@ -371,22 +383,22 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 					break;
 				}
 
-			log.debug("utxo")
-			log.debug(utxo)
+			logger.debug("utxo")
+			logger.debug(utxo)
 
 			// If we can't, make one by grouping UTXO inputs
 			if (!utxo) {
-				log.debug("regroup")
+				logger.debug("regroup")
 				// create new address
 				const newAddress = await
 					handlePromise(repeatAsync(API.getNewAddress, 3)(ACCOUNT_LABEL),
 						"Could not create new address for grouping");
 				if (newAddress === null) return;
 
-				log.debug("newAddress")
-				log.debug(newAddress)
+				logger.debug("newAddress")
+				logger.debug(newAddress)
 
-				log.debug("createRawTransaction")
+				logger.debug("createRawTransaction")
 
 				const pretx = await
 					handlePromise(repeatAsync(API.createRawTransaction, 3)
@@ -408,21 +420,21 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 				utxo = toUTXO(sendtx, 0, newAddress, state.total);
 
-				log.debug("new utxo")
-				log.debug(utxo)
+				logger.debug("new utxo")
+				logger.debug(utxo)
 			}
 
-			log.debug("send accepts loop")
+			logger.debug("send accepts loop")
 			// Send all accepts
 			let acceptedOrders = [] as FillOrder[];
 			for (let i of fillOrders) {
-				log.debug("fillOrder")
-				log.debug(i)
+				logger.debug("fillOrder")
+				logger.debug(i)
 
 				const skipErrorMsg = "Could not fill order from seller "
 					+ `${i.address}, skipping`;
 
-				log.debug("createRawAccept")
+				logger.debug("createRawAccept")
 
 				const acceptFee = tradeFee.acceptFees.get(i.address);
 				const accept = await createRawAccept(consts, client, i.address,
@@ -443,7 +455,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 				acceptedOrders.push(i);
 
-				log.debug("push waitTX")
+				logger.debug("push waitTX")
 				// Push to wait queue, wait for all before sending purchase
 				waitTXs.push(sendtx);
 
@@ -451,8 +463,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				utxo = toUTXO(sendtx, 0, utxo.address,
 					roundn(utxo.amount - MIN_CHANGE - acceptFee, 8));
 
-				log.debug("new utxo")
-				log.debug(utxo)
+				logger.debug("new utxo")
+				logger.debug(utxo)
 			}
 
 			// Create and sign pay transaction, pass to Order object for later
@@ -471,9 +483,9 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				if (finaltx === null) return;
 			}
 
-			log.debug("end buy")
+			logger.debug("end buy")
 		} else { // sell
-			log.debug("enter sell")
+			logger.debug("enter sell")
 
 			const addressAssets = await
 				getAddressAssets(client, state.trade).catch(e => {
@@ -489,8 +501,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				return;
 			}
 
-			log.debug("addressAssets")
-			log.debug(addressAssets)
+			logger.debug("addressAssets")
+			logger.debug(addressAssets)
 
 			let address;
 			let reshuffleAddresses: { address: string, amount: number }[] = [];
@@ -500,8 +512,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				if (!!asset) address = asset.address;
 			}
 
-			log.debug("find big address")
-			log.debug(address)
+			logger.debug("find big address")
+			logger.debug(address)
 
 			// Need to group addresses
 			if (!address) {
@@ -509,12 +521,12 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 				// Collect send inputs
 				for (let i of addressAssets) {
-					log.debug("addressAsset")
-					log.debug(i)
-					log.debug("remaining")
-					log.debug(remaining)
+					logger.debug("addressAsset")
+					logger.debug(i)
+					logger.debug("remaining")
+					logger.debug(remaining)
 					if (i.amount >= remaining) {
-						log.debug("exiting loop")
+						logger.debug("exiting loop")
 						reshuffleAddresses.push({
 							address: i.address, amount: remaining
 						});
@@ -527,15 +539,15 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 					remaining -= i.amount;
 				}
 
-				log.debug("reshuffleAddresses")
-				log.debug(reshuffleAddresses)
+				logger.debug("reshuffleAddresses")
+				logger.debug(reshuffleAddresses)
 
 				address = await handlePromise(repeatAsync(API.getNewAddress, 5)
 					(ACCOUNT_LABEL), "Could not create new address for sell order");
 				if (address === null) return;
 
-				log.debug("address")
-				log.debug(address)
+				logger.debug("address")
+				logger.debug(address)
 			}
 
 			const tradeFee = await estimateSellFee(consts, client,
@@ -545,16 +557,16 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				}) as Awaited<ReturnType<typeof estimateSellFee>>;
 			if (tradeFee === null) return;
 
-			log.debug("tradeFee")
-			log.debug(tradeFee)
+			logger.debug("tradeFee")
+			logger.debug(tradeFee)
 
 			// Fund this sell transaction
 			{
 				const firstAddress = reshuffleAddresses.length > 0 ?
 					reshuffleAddresses[0].address : address;
 
-				log.debug("firstAddress")
-				log.debug(firstAddress)
+				logger.debug("firstAddress")
+				logger.debug(firstAddress)
 
 				const pretx = await
 					handlePromise(repeatAsync(API.createRawTransaction, 3)({
@@ -576,19 +588,19 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 				utxo = toUTXO(sendtx, 0, firstAddress, tradeFee.totalFee);
 
-				log.debug("utxo")
-				log.debug(utxo)
+				logger.debug("utxo")
+				logger.debug(utxo)
 			}
 
-			log.debug("chain send tx loop")
+			logger.debug("chain send tx loop")
 			// Chain send transactions
 			for (let i = 0; i < reshuffleAddresses.length; i++) {
 				const nextAddress = i === reshuffleAddresses.length - 1 ?
 					address : reshuffleAddresses[i + 1].address;
 				const amount = reshuffleAddresses[i].amount;
 
-				log.debug(`i=${i} nextAddress=${nextAddress} amount=${amount}`)
-				log.debug("createRawSend")
+				logger.debug(`i=${i} nextAddress=${nextAddress} amount=${amount}`)
+				logger.debug("createRawSend")
 				const rawtx = await createRawSend(consts, client, nextAddress,
 					state.trade, amount, utxo, tradeFee.sendFee).catch(e => {
 						handleError(e, "error");
@@ -604,20 +616,20 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 					"Could not send raw reshuffle transaction for sell");
 				if (sendtx === null) return;
 
-				log.debug("push wait")
+				logger.debug("push wait")
 				// Push to waiting queue, wait for all then send in order
 				waitTXs.push(sendtx);
 
 				utxo = toUTXO(sendtx, 0, nextAddress,
 					roundn(utxo.amount - tradeFee.sendFee, 8));
 
-				log.debug("new utxo")
-				log.debug(utxo)
+				logger.debug("new utxo")
+				logger.debug(utxo)
 			}
 
 			// Now from [address] create the order transaction
 			{
-				log.debug("createRawOrder")
+				logger.debug("createRawOrder")
 				const rawtx = await createRawOrder(consts, client, state.trade,
 					OrderAction.ORDER_NEW, utxo, tradeFee.postFee, state.quantity,
 					state.price).catch(e => {
@@ -634,21 +646,21 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			}
 		}
 
-		log.debug("waitTXs")
-		log.debug(waitTXs)
+		logger.debug("waitTXs")
+		logger.debug(waitTXs)
 
-		log.debug("create order")
+		logger.debug("create order")
 
 		const order = new Order(client, state.buysell, state.orderType,
 			state.trade, state.quantity, state.price, state.fee,
 			utxo.address, state.isNoHighFees, waitTXs, finaltx);
 
-		log.debug("add pending order")
+		logger.debug("add pending order")
 		addPendingOrder(order);
 
 		notify("success", "Created new order", toTradeInfo(consts, order));
 
-		log.debug("run order")
+		logger.debug("run order")
 		order.run();
 	};
 

@@ -18,11 +18,10 @@ import {
 	PROPID_BITCOIN, PROPID_COIN, OMNI_EXPLORER_ENDPOINT, COIN_EXPLORER_ENDPOINT,
 	EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE, OPRETURN_ORDER_VSIZE, OrderAction
 } from './constants';
-
 import {
 	handleError, handlePromise, repeatAsync, waitForTx, createRawOrder, roundn,
 	estimateTxFee, fundTx, signTx, sendTx, toUTXO, toFormattedAmount, toTradeInfo,
-	notify, log, sendOpenLink, Queue
+	notify, sendOpenLink, Queue, log
 } from './util';
 
 export type Data = {
@@ -179,6 +178,7 @@ const Orders = () => {
 	);
 
 	const sendCancel = async (trade: AssetTrade) => {
+		const logger = log();
 		const client = getClient();
 		const API = api(client);
 		const consts = getConstants();
@@ -191,7 +191,7 @@ const Orders = () => {
 			});
 		if (cancelFee === null) return;
 
-		log.debug(`cancelFee=${cancelFee}`)
+		logger.debug(`cancelFee=${cancelFee}`)
 
 		const utxos = await
 			handlePromise(repeatAsync(API.listUnspent, 3)([trade.address]),
@@ -228,8 +228,8 @@ const Orders = () => {
 			utxo = toUTXO(sendtx, 0, trade.address, cancelFee + MIN_CHANGE);
 		}
 
-		log.debug("utxo");
-		log.debug(utxo);
+		logger.debug("utxo");
+		logger.debug(utxo);
 
 		let canceltx;
 		{

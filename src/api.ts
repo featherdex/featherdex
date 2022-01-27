@@ -12,8 +12,7 @@ import {
 	COINBASE_API_ENDPOINT, BITTREX_API_ENDPOINT, COIN_FEERATE,
 	MIN_ACCEPT_FEE, BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_COIN
 } from './constants';
-
-import { log, roundn } from './util';
+import { roundn } from './util';
 
 const api = (client: typeof Client) => {
 	function API() { };

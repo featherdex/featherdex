@@ -33,12 +33,19 @@ import { app, BrowserWindow, ipcRenderer } from 'electron';
 let lastId = 0;
 const rootPath = getAppDataPath(APP_NAME);
 
-export const log = require('simple-node-logger').createSimpleLogger({
+const logger = require('simple-node-logger').createSimpleLogger({
 	logFilePath: path.join(rootPath, 'featherdex.log'),
-	timestampFormat: 'YYYY-MM-DD HH:mm:ss.SSS'
+	timestampFormat: 'YYYY-MM-DD HH:mm:ss.SSS',
 });
 
-log.setLevel('info');
+export function log() {
+	return logger;
+}
+
+export function setLogLevel(level: "fatal" | "error" | "warn" | "info" | "debug") {
+	logger.setLevel(level);
+	logger.debug(`Set log level to ${level}`)
+}
 
 export function uniqueId(prefix = 'id') {
 	lastId++;
@@ -289,7 +296,7 @@ export async function readLayout() {
 }
 
 export function writeLayout(layout: Object) {
-	log.debug("writeLayout");
+	logger.debug("writeLayout");
 	return writeJson(LAYOUT_NAME, layout);
 }
 
@@ -570,9 +577,9 @@ export async function createRawOrder(consts: PlatformConstants,
 	if (change < MIN_CHANGE)
 		throw new Error("Could not create raw order transaction, fee too high");
 
-	log.debug("inUTXO")
-	log.debug(inUTXO)
-	log.debug(`change=${change}`)
+	logger.debug("inUTXO")
+	logger.debug(inUTXO)
+	logger.debug(`change=${change}`)
 
 	const pretx = await repeatAsync(API.createRawTransaction, 3)({
 		ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }],
@@ -618,8 +625,8 @@ export async function getFillOrders(consts: PlatformConstants, client: typeof Cl
 				});
 	if (sells === null) return;
 
-	log.debug("sells")
-	log.debug(sells)
+	logger.debug("sells")
+	logger.debug(sells)
 
 	const pendingTxs = await repeatAsync(API.getPendingTxs, 5)().catch(_ => {
 		throw new Error("Could not get pending transactions for orderbook query");
@@ -631,8 +638,8 @@ export async function getFillOrders(consts: PlatformConstants, client: typeof Cl
 			throw new Error("Could not get pending accepts for orderbook query");
 		});
 
-	log.debug("pendingAccepts")
-	log.debug(pendingAccepts)
+	logger.debug("pendingAccepts")
+	logger.debug(pendingAccepts)
 
 	// Get cancels that are sitting in the mempool as well
 	const pendingCancels = await
@@ -642,30 +649,28 @@ export async function getFillOrders(consts: PlatformConstants, client: typeof Cl
 					throw new Error("Could not get list of pending sell cancels");
 				});
 
-	log.debug("pendingCancels")
-	log.debug(pendingCancels)
+	logger.debug("pendingCancels")
+	logger.debug(pendingCancels)
 
 	let fillOrders = [] as FillOrder[];
 	let fillRemaining = quantity;
 
-	log.debug("fill order loop")
+	logger.debug("fill order loop")
 	for (let i of sells) {
 		if (pendingCancels.has(i.seller)
 			|| (isNoHighFees && parseFloat(i.minimumfee) > MAX_ACCEPT_FEE)) continue;
 
-		log.debug("sell")
-		log.debug(i)
+		logger.debug("sell")
+		logger.debug(i)
 
 		const orderAmount = parseFloat(i.amountavailable)
 			+ sum(pendingAccepts.get(i.seller) || []); // pendings are negative
-		const orderPrice =
-			parseFloat(i[`${COIN_NAME.toLowerCase()}desired`])
-			/ parseFloat(i.amountavailable);
+		const orderPrice = parseFloat(i.unitprice);
 
 		if (orderPrice > price) break;
 
 		if (orderAmount >= fillRemaining) {
-			log.debug("exiting loop")
+			logger.debug("exiting loop")
 			fillOrders.push({
 				address: i.seller,
 				quantity: roundn(fillRemaining, 8),
@@ -701,8 +706,8 @@ export async function getAddressAssets(client: typeof Client, propid: number) {
 					throw new Error("Could not get pending sells for filtering");
 				});
 
-	log.debug("pendingSells")
-	log.debug(pendingSells)
+	logger.debug("pendingSells")
+	logger.debug(pendingSells)
 
 	// Get address asset balances, filter out pending sells, descending
 	const addressAssets = await
@@ -750,7 +755,7 @@ export function toUTXO(txid: string, vout: number, address: string, amount: numb
 
 export async function fundTx(client: typeof Client, rawtx: string,
 	options = {} as FundRawOptions, errmsg = "Could not fund raw transaction") {
-	log.debug(`fundtx ${rawtx}`)
+	logger.debug(`fundtx ${rawtx}`)
 	const API = api(client);
 
 	let opts = { ...options };
@@ -759,7 +764,7 @@ export async function fundTx(client: typeof Client, rawtx: string,
 			(ACCOUNT_LABEL), `${errmsg} (getnewaddress)`);
 		if (address === null) return null;
 
-		log.debug(`fundtx new address ${address}`)
+		logger.debug(`fundtx new address ${address}`)
 
 		opts = { ...opts, changeAddress: address };
 	}
@@ -770,14 +775,14 @@ export async function fundTx(client: typeof Client, rawtx: string,
 
 export function signTx(client: typeof Client, rawtx: string,
 	errmsg = "Could not sign raw transaction") {
-	log.debug(`signtx ${rawtx}`)
+	logger.debug(`signtx ${rawtx}`)
 	return handlePromise(repeatAsync(api(client).signRawTransaction, 3)(rawtx),
 		errmsg, v => v.hex);
 }
 
 export function sendTx(client: typeof Client, rawtx: string,
 	errmsg = "Could not send raw transaction") {
-	log.debug(`sendtx ${rawtx}`)
+	logger.debug(`sendtx ${rawtx}`)
 	return handlePromise(repeatAsync(api(client).sendRawTransaction, 3)(rawtx),
 		errmsg);
 }
@@ -820,8 +825,8 @@ export function handleError(err: Error, level = "log") {
 		|| err.message === "no auth mechanism defined") level = "warn";
 
 	const flog = level === "fatal" ?
-		log.fatal : (level === "error" ?
-			log.error : (level === "warn" ? log.warn : log.info));
+		logger.fatal : (level === "error" ?
+			logger.error : (level === "warn" ? logger.warn : logger.info));
 
 	flog(`${err.name}: `, err.message);
 	flog(err.stack);
