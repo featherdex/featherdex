@@ -13,7 +13,7 @@ export const IN_NUMF = "en-IN";
 export const FR_NUMF = "fr-FR";
 
 export const OMNI_VERSION = 1;
-export const VERSION_STRING = "v0.5.1a";
+export const VERSION_STRING = "v0.5.2a";
 export const ACCOUNT_LABEL = "featherdex";
 
 export const TYPE_SIMPLE_SEND = 0;
