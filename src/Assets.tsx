@@ -2,6 +2,7 @@
 
 import React from 'react';
 import useInterval from 'use-interval';
+import N from 'decimal.js';
 
 import { DateTime } from 'luxon';
 import { Column } from 'react-table';
@@ -136,7 +137,7 @@ const Assets = () => {
 				assetData.push({
 					asset: `${COIN_TICKER} (Bittrex)`,
 					quantity: coinbal,
-					value: coinbal * tickerData.last.price,
+					value: +new N(coinbal).mul(tickerData.last.price),
 					...tickerData,
 				});
 			}
@@ -150,7 +151,7 @@ const Assets = () => {
 		const coinData = {
 			asset: `${COIN_TICKER} (wallet)`,
 			quantity: quant,
-			value: quant * tickerData.last.price,
+			value: +new N(quant).mul(tickerData.last.price),
 			...(assetData.length > 0 ? emptyTickerData : tickerData),
 		};
 
@@ -167,7 +168,7 @@ const Assets = () => {
 			assetData.push({
 				asset: `(${asset.propertyid}) ${asset.name}`,
 				quantity: balance,
-				value: assetTicker.last.price * balance,
+				value: +new N(balance).mul(assetTicker.last.price),
 				...assetTicker,
 			});
 		}

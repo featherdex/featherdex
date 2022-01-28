@@ -2,6 +2,7 @@
 
 import fetch from 'node-fetch';
 import CryptoJS from 'crypto-js';
+import N from 'decimal.js';
 
 import { DateTime } from 'luxon';
 import { BarData, UTCTimestamp } from 'lightweight-charts';
@@ -12,7 +13,6 @@ import {
 	COINBASE_API_ENDPOINT, BITTREX_API_ENDPOINT, COIN_FEERATE,
 	MIN_ACCEPT_FEE, BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_COIN
 } from './constants';
-import { roundn } from './util';
 
 const api = (client: typeof Client) => {
 	function API() { };
@@ -273,10 +273,10 @@ const api = (client: typeof Client) => {
 					status: "CLOSED",
 					idBuy: p.propertyid,
 					idSell: PROPID_COIN, // currently only accept base coin
-					quantity: parseFloat(p.amountbought),
-					remaining: 0,
-					amount: parseFloat(p.amountpaid),
-					fee: 0, // unused
+					quantity: new N(p.amountbought),
+					remaining: new N(0),
+					amount: new N(p.amountpaid),
+					fee: new N(0), // unused
 				}))).sort((a, b) => a.time - b.time);
 	};
 
@@ -284,12 +284,12 @@ const api = (client: typeof Client) => {
 		endblock?: number): Promise<AssetTrade[]> => {
 		const txs = await API.listTransactions(startblock, endblock);
 
-		const allTXFees = Object.assign({},
+		const allTXFees: { [k: string]: Decimal } = Object.assign({},
 			...(await client.command(txs.map(otx =>
 			({
 				method: "gettransaction",
 				parameters: [otx.txid]
-			}))) as Tx[]).map(tx => ({ [tx.txid]: tx.fee })));
+			}))) as Tx[]).map(tx => ({ [tx.txid]: new N(tx.fee || 0) })));
 
 		const buyTXs = txs.filter(v =>
 			v.type === "DEx Purchase"
@@ -309,10 +309,10 @@ const api = (client: typeof Client) => {
 					status: "CLOSED",
 					idBuy: purchase.propertyid,
 					idSell: PROPID_COIN,
-					quantity: parseFloat(purchase.amountbought),
-					remaining: 0,
-					amount: parseFloat(purchase.amountpaid),
-					fee: -allTXFees[v.txid],
+					quantity: new N(purchase.amountbought),
+					remaining: new N(0),
+					amount: new N(purchase.amountpaid),
+					fee: allTXFees[v.txid].neg(),
 				})));
 
 		let cancelledSells: Record<number, boolean> = {};
@@ -343,7 +343,7 @@ const api = (client: typeof Client) => {
 			if (tx.action === "cancel") continue;
 
 			if (dexsell) {
-				const remaining = parseFloat(dexsell.amountavailable);
+				const remaining = new N(dexsell.amountavailable);
 				sells.push({
 					address: dexsell.seller,
 					time: tx.blocktime as UTCTimestamp,
@@ -352,9 +352,9 @@ const api = (client: typeof Client) => {
 					status: "OPEN",
 					idBuy: PROPID_COIN,
 					idSell: tx.propertyid,
-					quantity: parseFloat(tx.amount),
+					quantity: new N(tx.amount),
 					remaining: remaining,
-					amount: remaining * parseFloat(dexsell.unitprice),
+					amount: remaining.mul(new N(dexsell.unitprice)).toDP(8),
 					fee: allTXFees[tx.txid],
 				});
 			} else
@@ -365,9 +365,9 @@ const api = (client: typeof Client) => {
 					status: cancelledSells[i] ? "CANCELLED" : "CLOSED",
 					idBuy: PROPID_COIN,
 					idSell: tx.propertyid,
-					quantity: parseFloat(tx.amount),
-					remaining: 0,
-					amount: parseFloat(tx[`${coinName.toLowerCase()}desired`]),
+					quantity: new N(tx.amount),
+					remaining: new N(0),
+					amount: new N(tx[`${coinName.toLowerCase()}desired`]),
 					fee: allTXFees[tx.txid],
 				});
 		}
@@ -380,32 +380,33 @@ const api = (client: typeof Client) => {
 	API.getNFTData = (propid: number, idx?: number): Promise<NFTInfo[]> =>
 		client.command("omni_getnonfungibletokendata", ...optArgParse(propid, idx));
 
-	API.makeAccept = (fromaddr: string, toaddr: string,
-		propid: number, amount: number): Promise<string> =>
-		client.command("omni_senddexaccept",
-			fromaddr, toaddr, propid, amount.toString());
-	API.makeOrder = (address: string, propid: number, quantity: number,
-		price: number, timelimit = PAY_BLOCK_LIMIT,
+	API.makeAccept = (fromaddr: string, toaddr: string, propid: number,
+		amount: Decimal): Promise<string> =>
+		client.command("omni_senddexaccept", fromaddr, toaddr, propid,
+			amount.toFixed(8));
+	API.makeOrder = (address: string, propid: number, quantity: Decimal,
+		price: Decimal, timelimit = PAY_BLOCK_LIMIT,
 		minfee = MIN_ACCEPT_FEE): Promise<string> =>
-		client.command("omni_sendnewdexorder", address, propid,
-			`${quantity}`, `${roundn(quantity * price, 8)}`, timelimit, `${minfee}`);
-	API.updateOrder = (address: string, propid: number, quantity: number,
-		price: number, timelimit = PAY_BLOCK_LIMIT,
+		client.command("omni_sendnewdexorder", address, propid, quantity.toFixed(8),
+			quantity.mul(price).toFixed(8), timelimit, minfee.toFixed(8));
+	API.updateOrder = (address: string, propid: number, quantity: Decimal,
+		price: Decimal, timelimit = PAY_BLOCK_LIMIT,
 		minfee = MIN_ACCEPT_FEE): Promise<string> =>
 		client.command("omni_sendupdatedexorder", address, propid,
-			`${quantity}`, `${roundn(quantity * price, 8)}`, timelimit, `${minfee}`);
+			quantity.toFixed(8), quantity.mul(price).toFixed(8), timelimit,
+			minfee.toFixed(8));
 	API.cancelOrder = (address: string, propid: number): Promise<string> =>
 		client.command("omni_sendcanceldexorder", address, propid);
 
-	API.createPayloadSend = (propid: number, amount: number): Promise<string> =>
-		client.command("omni_createpayload_simplesend", propid, `${amount}`);
-	API.createPayloadAccept = (propid: number, amount: number): Promise<string> =>
-		client.command("omni_createpayload_dexaccept", propid, `${amount}`);
-	API.createPayloadOrder = (propid: number, quantity: number, price: number,
+	API.createPayloadSend = (propid: number, amount: Decimal): Promise<string> =>
+		client.command("omni_createpayload_simplesend", propid, amount.toFixed(8));
+	API.createPayloadAccept = (propid: number, amount: Decimal): Promise<string> =>
+		client.command("omni_createpayload_dexaccept", propid, amount.toFixed(8));
+	API.createPayloadOrder = (propid: number, quantity: Decimal, price: Decimal,
 		action: number, timelimit = PAY_BLOCK_LIMIT,
 		minfee = MIN_ACCEPT_FEE): Promise<string> =>
-		client.command("omni_createpayload_dexsell", propid, `${quantity}`,
-			`${roundn(quantity * price, 8)}`, timelimit, `${minfee}`, action);
+		client.command("omni_createpayload_dexsell", propid, quantity.toFixed(8),
+			quantity.mul(price).toFixed(8), timelimit, minfee.toFixed(8), action);
 
 	API.createRawTxOpReturn =
 		(rawtx: string, payload: string): Promise<string> =>
@@ -443,7 +444,7 @@ const api = (client: typeof Client) => {
 
 	API.makeBittrexOrder = (apiKey: string, apiSecret: string, market: string,
 		buysell: "buy" | "sell", orderType: "market" | "limit",
-		quantity: number, price?: number) => {
+		quantity: Decimal, price?: Decimal) => {
 		let body: BittrexNewOrder = {
 			marketSymbol: market,
 			direction: buysell.toUpperCase() as ("BUY" | "SELL"),

@@ -7,7 +7,7 @@ import Terminal from 'terminal-in-react';
 import Client from 'bitcoin-core';
 import ReactNotification from 'react-notifications-component';
 import createRBTree from 'functional-red-black-tree';
-import isEqual from 'lodash/fp/isEqual';
+import N from 'decimal.js';
 
 import { ipcRenderer } from 'electron';
 import { DateTime, Duration } from 'luxon';
@@ -35,8 +35,9 @@ import AppContext from './contexts/AppContext';
 import { PROPID_BITCOIN, PROPID_COIN } from './constants';
 import {
 	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf, writeLayout,
-	isNumber, isBoolean, parseBoolean, handlePromise, Queue, roundn, toCandle,
-	isBarData, tradeToLineData, constants, handleError, setLogLevel, log
+	isNumber, isBoolean, parseBoolean, handlePromise, Queue, toCandle, tickersEqual,
+	propsEqual, isBarData, tradeToLineData, constants, handleError, setLogLevel, log,
+	dsum
 } from './util';
 
 import 'react-contexify/dist/ReactContexify.css';
@@ -235,15 +236,15 @@ class App extends React.PureComponent<AppProps, AppState> {
 				v.idBuy === propid).sort((a, b) => b.time - a.time);
 
 			let lastTime;
-			let last = 0;
+			let last = new N(0);
 
 			if (trades.length > 0) {
 				let lastTrade = trades[0];
 				lastTime = DateTime.fromSeconds(lastTrade.time);
-				last = roundn(lastTrade.amount / lastTrade.quantity, 8);
+				last = lastTrade.amount.div(lastTrade.quantity).toDP(8);
 			}
 
-			if (last === 0) continue; // Empty market
+			if (last.eq(0)) continue; // Empty market
 
 			const asks = dexsells.filter(v =>
 				parseInt(v.propertyid) === propid).map(v => parseFloat(v.unitprice));
@@ -254,22 +255,22 @@ class App extends React.PureComponent<AppProps, AppState> {
 				Duration.fromObject({ days: 1 }).as('seconds'));
 			const dayClose = dayCandles.length > 0 && isBarData(dayCandles[0]) ?
 				dayCandles[0].close : null;
-			const chg = dayClose ? last - dayClose : 0;
+			const chg = dayClose ? last.sub(dayClose) : new N(0);
 
 			marketData.set(asset.id, {
 				market: asset.name,
-				last: { time: lastTime, price: last },
-				chg: chg,
-				chgp: dayClose ? chg / dayClose : 0,
+				last: { time: lastTime, price: +last },
+				chg: +chg,
+				chgp: dayClose ? +chg.div(dayClose) : 0,
 				bid: 0,
 				ask: asks.length !== 0 ? Math.min(...asks) : 0,
-				vol: trades.filter(v => v.time >= now.minus({ days: 1 }).toSeconds())
-					.map(v => v.amount).reduce((pv, v) => pv + v, 0)
+				vol: +dsum(trades.filter(v => v.time >= now.minus({ days: 1 })
+					.toSeconds()).map(v => v.amount)),
 			});
 		}
 
 		this.setState(oldState => {
-			if (!isEqual(oldState.tickers, marketData))
+			if (!tickersEqual(oldState.tickers, marketData))
 				return { tickers: marketData };
 		});
 	}
@@ -297,7 +298,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 		if (list === null) return;
 
 		this.setState(oldState => {
-			if (!isEqual(list, oldState.assetList)) return { assetList: list };
+			if (!propsEqual(list, oldState.assetList)) return { assetList: list };
 		});
 	}
 

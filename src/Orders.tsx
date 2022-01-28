@@ -2,6 +2,7 @@
 
 import React from 'react';
 import useInterval from 'use-interval';
+import N from 'decimal.js';
 
 import { ipcRenderer } from 'electron';
 import { Column } from 'react-table';
@@ -19,7 +20,7 @@ import {
 	EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE, OPRETURN_ORDER_VSIZE, OrderAction
 } from './constants';
 import {
-	handleError, handlePromise, repeatAsync, waitForTx, createRawOrder, roundn,
+	handleError, handlePromise, repeatAsync, waitForTx, createRawOrder,
 	estimateTxFee, fundTx, signTx, sendTx, toUTXO, toFormattedAmount, toTradeInfo,
 	notify, sendOpenLink, Queue, log
 } from './util';
@@ -184,8 +185,8 @@ const Orders = () => {
 		const consts = getConstants();
 		const { MIN_CHANGE } = consts;
 
-		let cancelFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
-			+ TX_O_VSIZE + OPRETURN_ORDER_VSIZE).catch(e => {
+		let cancelFee: Decimal = await estimateTxFee(client, "", EMPTY_TX_VSIZE
+			+ TX_I_VSIZE + TX_O_VSIZE + OPRETURN_ORDER_VSIZE).catch(e => {
 				handleError(e, "error");
 				return null;
 			});
@@ -198,7 +199,7 @@ const Orders = () => {
 				"Failed to get address utxos for cancel transaction");
 		if (utxos === null) return;
 
-		let utxo = utxos.find(v => v.amount >= cancelFee + MIN_CHANGE);
+		let utxo = utxos.find(v => new N(v.amount).gte(cancelFee.add(MIN_CHANGE)));
 
 		// If there is not a sufficient UTXO we must make one
 		if (!utxo) {
@@ -207,7 +208,7 @@ const Orders = () => {
 					({
 						ins: [],
 						outs: [{
-							[trade.address]: roundn(cancelFee + MIN_CHANGE, 8),
+							[trade.address]: +cancelFee.add(MIN_CHANGE).toDP(8),
 						}]
 					}),
 					"Could not create raw transaction for cancel fee funding");
@@ -225,7 +226,7 @@ const Orders = () => {
 				"Could not send transaction for cancel fee funding");
 			if (sendtx === null) return;
 
-			utxo = toUTXO(sendtx, 0, trade.address, cancelFee + MIN_CHANGE);
+			utxo = toUTXO(sendtx, 0, trade.address, cancelFee.add(MIN_CHANGE));
 		}
 
 		logger.debug("utxo");
@@ -285,12 +286,12 @@ const Orders = () => {
 				status: v.status,
 				idBuy: v.buysell === "buy" ? v.id : PROPID_COIN,
 				idSell: v.buysell === "sell" ? v.id : PROPID_COIN,
-				quantity: v.quantity,
-				remaining: v.remaining,
-				price: v.price,
-				fee: v.fee,
-				total: v.quantity * v.price
-					+ (v.buysell === "sell" ? -v.fee : v.fee),
+				quantity: +v.quantity,
+				remaining: +v.remaining,
+				price: +v.price,
+				fee: +v.fee,
+				total: +v.quantity.mul(v.price).add(v.buysell === "sell" ?
+					v.fee.neg() : v.fee).toDP(8),
 			};
 		});
 
@@ -307,11 +308,11 @@ const Orders = () => {
 				status: pendingCancels[v.address] ? "CANCELING" : v.status,
 				idBuy: v.idBuy,
 				idSell: v.idSell,
-				quantity: v.quantity,
-				remaining: v.remaining,
-				price: v.amount / v.quantity,
-				fee: v.fee,
-				total: v.amount + v.fee,
+				quantity: +v.quantity,
+				remaining: +v.remaining,
+				price: +v.amount.div(v.quantity),
+				fee: +v.fee,
+				total: +v.amount.add(v.fee),
 			}));
 
 		let bittrexData: Data[] = [];

@@ -1,5 +1,6 @@
 import React from 'react';
 import Client from 'bitcoin-core';
+import N from 'decimal.js';
 
 import { DateTime } from 'luxon';
 import { UTCTimestamp } from 'lightweight-charts';
@@ -15,10 +16,10 @@ export default class Order implements Cancellable {
 	buysell: string = null;
 	orderType: string = null;
 	id = 0;
-	quantity = 0;
-	remaining = 0;
-	price = 0;
-	fee = 0;
+	quantity = new N(0);
+	remaining = new N(0);
+	price = new N(0);
+	fee = new N(0);
 	address: string = null;
 	paynohighfees = true;
 	waitTXs = [] as string[];
@@ -28,8 +29,8 @@ export default class Order implements Cancellable {
 	finalizing = false;
 
 	constructor(client: typeof Client, buysell: "buy" | "sell",
-		orderType: "market" | "limit", id: number, quantity: number,
-		price: number, fee: number, address: string, paynohighfees: boolean,
+		orderType: "market" | "limit", id: number, quantity: Decimal,
+		price: Decimal, fee: Decimal, address: string, paynohighfees: boolean,
 		waitTXs = [] as string[], finaltx: string) {
 		this.client = client;
 		this.buysell = buysell;
@@ -97,11 +98,11 @@ export default class Order implements Cancellable {
 			status: this.status,
 			idBuy: this.buysell === "buy" ? this.id : 1,
 			idSell: this.buysell === "sell" ? this.id : 1,
-			quantity: this.quantity,
-			remaining: this.remaining,
-			price: this.price,
-			fee: this.fee,
-			total: this.quantity * this.price + this.fee,
+			quantity: +this.quantity,
+			remaining: +this.remaining,
+			price: +this.price,
+			fee: +this.fee,
+			total: +(this.quantity.mul(this.price).add(this.fee)),
 		};
 	}
 };

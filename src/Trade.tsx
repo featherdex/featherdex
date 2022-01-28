@@ -1,4 +1,5 @@
 import React from 'react';
+import N from 'decimal.js';
 import NumberFormat from 'react-number-format';
 import styled from 'styled-components';
 
@@ -13,22 +14,22 @@ import Orderbook from './Orderbook';
 
 import {
 	repeatAsync, handleError, handlePromise, getFillOrders, getAddressAssets,
-	roundn, toTradeInfo, estimateSellFee, estimateBuyFee, createRawAccept,
+	toTradeInfo, estimateSellFee, estimateBuyFee, createRawAccept,
 	createRawPay, createRawSend, createRawOrder, fundTx, signTx, sendTx, toUTXO,
 	notify, log
 } from './util';
 import {
-	SATOSHI, TRADE_FEERATE, MIN_TRADE_FEE, UP_SYMBOL, DOWN_SYMBOL,
-	PROPID_BITCOIN, PROPID_COIN, ACCOUNT_LABEL, OrderAction
+	SATOSHI, TRADE_FEERATE, MIN_TRADE_FEE, UP_SYMBOL, DOWN_SYMBOL, PROPID_BITCOIN,
+	PROPID_COIN, ACCOUNT_LABEL, BITTREX_TRADE_FEERATE, OrderAction
 } from './constants';
 
 export type TraderState = {
 	trade: number,
 	base: number,
-	price: number,
-	quantity: number,
-	fee: number,
-	total: number,
+	price: Decimal,
+	quantity: Decimal,
+	fee: Decimal,
+	total: Decimal,
 	orderType: "market" | "limit",
 	buysell: "buy" | "sell",
 	isDivisible: boolean,
@@ -55,74 +56,82 @@ const reducerTrade =
 		const getBest = (side: "buy" | "sell") => {
 			const bestBook = side === "buy" ?
 				state.asks[0] : state.bids[0];
-			return bestBook ? bestBook.price : 0;
+			return bestBook ? bestBook.price : new N(0);
 		};
 
-		const getFee = (price: number, quantity: number) => {
-			const fee = roundn(price * quantity * TRADE_FEERATE, 8);
-			return fee >= MIN_TRADE_FEE ? fee : MIN_TRADE_FEE;
+		const getFee = (price: Decimal, quantity: Decimal) => {
+			const fee = price.mul(quantity).mul(TRADE_FEERATE).toDP(8);
+			return fee.gte(MIN_TRADE_FEE) ? fee : MIN_TRADE_FEE;
 		};
 
 		switch (action.type) {
 			case "set_price":
 				{
-					const price = roundn(action.payload, 8);
+					const price = new N(action.payload).toDP(8);
 					let v = { ...state, price: price };
 					if (v.base === PROPID_BITCOIN) {
 						const fee = getFee(price, state.quantity);
 						v = {
 							...v, fee,
-							total: roundn(price * state.quantity + fee, 8),
+							total: price.mul(state.quantity).add(fee).toDP(8),
 						};
 					} else
 						v = {
 							...v,
-							total: roundn(price * state.quantity + state.fee, 8),
+							total: price.mul(state.quantity).add(state.fee).toDP(8),
 						};
 					return v;
 				}
 			case "set_quantity":
 				{
-					const quantity = roundn(action.payload, 8);
+					console.log("hello)")
+					const quantity = new N(action.payload).toDP(8);
 					let v = { ...state, quantity: quantity };
 					if (v.base === PROPID_BITCOIN) {
-						const fee = roundn(state.price * quantity * 0.003, 8);
+						const fee = state.price.mul(quantity)
+							.mul(BITTREX_TRADE_FEERATE).toDP(8);
 						v = {
 							...v, fee,
-							total: roundn(state.price * quantity + fee, 8),
+							total: state.price.mul(quantity).add(fee).toDP(8),
 						};
 					} else
 						v = {
 							...v,
-							total: roundn(state.price * quantity + state.fee, 8),
+							total: state.price.mul(quantity).add(state.fee).toDP(8),
 						};
 					return v;
 				}
 			case "set_fee":
 				{
-					const fee = roundn(action.payload, 8);
+					const fee = new N(action.payload).toDP(8);
 					return {
 						...state, fee,
-						total: roundn(state.price * state.quantity + fee, 8),
+						total: state.price.mul(state.quantity).add(fee).toDP(8),
 					};
 				}
 			case "set_total":
-				const fee = roundn(state.base === PROPID_BITCOIN ?
-					action.payload * 0.003 / 1.003 : state.fee, 8);
+				const payload = new N(action.payload).toDP(8);
+				const fee = state.base === PROPID_BITCOIN ?
+					new N(action.payload).times(BITTREX_TRADE_FEERATE)
+						.div(BITTREX_TRADE_FEERATE.add(1)).toDP(8) : state.fee;
 
-				const pretotal = action.payload - fee;
-				const total = Math.max(state.isDivisible ?
-					roundn(action.payload, 8) : (state.price > 0 ?
-						roundn(((action.payload >= state.total ?
-							Math.ceil : Math.floor)
-							(Math.round(pretotal / SATOSHI)
-								/ Math.round(state.price / SATOSHI))
-							* Math.round(state.price / SATOSHI)
-							+ Math.round(fee / SATOSHI)) * SATOSHI, 8) : fee), fee);
+				const pretotal = payload.sub(fee);
+				let total;
+
+				if (state.isDivisible) total = payload;
+				else if (state.price.eq(0)) total = fee;
+				else {
+					const rfunc = payload.gte(state.total) ?
+						(n: N.Value) => N.ceil(n) : (n: N.Value) => N.floor(n);
+					total = rfunc(pretotal.div(state.price)).mul(state.price)
+						.add(fee).toDP(8);
+				}
+				if (total.lt(fee)) total = fee;
+
 				return {
 					...state, total, fee,
-					quantity: state.price === 0 ?
-						0 : roundn((total - fee) / state.price, 8),
+					quantity: state.price.eq(0) ?
+						new N(0) : total.minus(fee).div(state.price).toDP(8),
 				};
 			case "set_divisible":
 				return { ...state, isDivisible: action.payload };
@@ -165,20 +174,10 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 	const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const target = event.target;
-		const v = target.type === "checkbox" ?
-			target.checked : target.value;
+		const v = target.type === "checkbox" ? target.checked : target.value;
 		const name = target.name;
 
 		switch (name) {
-			case "price":
-				cDispatch("set_price")(parseFloat(v as string));
-				break;
-			case "quantity":
-				cDispatch("set_quantity")(parseFloat(v as string));
-				break;
-			case "total":
-				cDispatch("set_total")(parseFloat(v as string));
-				break;
 			case "confirm":
 				cDispatch("set_confirm")(v as boolean);
 				break;
@@ -229,14 +228,14 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		}
 
 		// case: trade value is zero
-		if (state.buysell === "buy" && state.total === 0
-			|| state.buysell === "sell" && state.quantity === 0) {
+		if (state.buysell === "buy" && state.total.eq(0)
+			|| state.buysell === "sell" && state.quantity.eq(0)) {
 			alert("Cannot place zero-value trade");
 			return;
 		}
 
 		// case: trade value is below dust
-		if (state.price * state.quantity < MIN_CHANGE) {
+		if (state.price.mul(state.quantity).lt(MIN_CHANGE)) {
 			alert("Total trade is too small, value must be at least"
 				+ ` ${MIN_CHANGE} ${COIN_TICKER}`);
 			return;
@@ -275,7 +274,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				if (coins === null) return;
 
 				// case: insufficient balance, coin
-				if (state.total > coins) {
+				if (state.total.gt(new N(coins))) {
 					handleError(new Error("Insufficient balance, "
 						+ `have: ${coins.toFixed(8)} ${COIN_TICKER}, need: `
 						+ `${state.total.toFixed(8)} ${COIN_TICKER}`), "error");
@@ -291,7 +290,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 				// case: insufficient balance, ASSET
 				if (asset.length === 0
-					|| state.quantity > parseFloat(asset[0].balance)) {
+					|| state.quantity.gt(new N(asset[0].balance))) {
 					handleError(new Error("Insufficient balance, "
 						+ `have: ${parseFloat(asset[0].balance).toFixed(8)} `
 						+ `[ASSET #${state.trade}], `
@@ -341,7 +340,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			logger.debug("utxos")
 			logger.debug(utxos)
 
-			const fillOrders = await getFillOrders(consts, client, state.trade,
+			const fillOrders = await getFillOrders(client, state.trade,
 				state.quantity, state.orderType === "limit" ?
 				state.price : undefined, state.isNoHighFees).then(v =>
 					v.fillOrders, e => {
@@ -378,7 +377,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			logger.debug("find utxo loop")
 			// Try to find a UTXO that can cover everything
 			for (let i of utxos)
-				if (i.amount >= state.total) {
+				if (new N(i.amount).gte(state.total)) {
 					utxo = i;
 					break;
 				}
@@ -461,7 +460,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 				// Make the new UTXO the output of the completed transaction
 				utxo = toUTXO(sendtx, 0, utxo.address,
-					roundn(utxo.amount - MIN_CHANGE - acceptFee, 8));
+					new N(utxo.amount).sub(MIN_CHANGE).sub(acceptFee).toDP(8));
 
 				logger.debug("new utxo")
 				logger.debug(utxo)
@@ -505,10 +504,10 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			logger.debug(addressAssets)
 
 			let address;
-			let reshuffleAddresses: { address: string, amount: number }[] = [];
+			let reshuffleAddresses: { address: string, amount: Decimal }[] = [];
 			{
 				const asset = addressAssets.find(v =>
-					v.amount >= state.quantity && !v.occupied && !v.pending);
+					v.amount.gte(state.quantity) && !v.occupied && !v.pending);
 				if (!!asset) address = asset.address;
 			}
 
@@ -536,7 +535,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 					reshuffleAddresses.push({
 						address: i.address, amount: i.amount
 					});
-					remaining -= i.amount;
+					remaining = remaining.sub(i.amount);
 				}
 
 				logger.debug("reshuffleAddresses")
@@ -620,8 +619,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				// Push to waiting queue, wait for all then send in order
 				waitTXs.push(sendtx);
 
-				utxo = toUTXO(sendtx, 0, nextAddress,
-					roundn(utxo.amount - tradeFee.sendFee, 8));
+				utxo = toUTXO(sendtx, 0, nextAddress, new N(utxo.amount)
+					.sub(tradeFee.sendFee).toDP(8));
 
 				logger.debug("new utxo")
 				logger.debug(utxo)
@@ -726,7 +725,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 						<td>
 							<CoinInput value={state.quantity}
 								dispatch={cDispatch("set_quantity")}
-								step={state.isDivisible ? SATOSHI : 1}
+								step={state.isDivisible ? SATOSHI : new N(1)}
 								digits={state.isDivisible ? 8 : 0}
 								disabled={state.orderType === "market"
 									&& state.buysell === "buy"} />
@@ -752,8 +751,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 						<td>
 							<input type="number" name="fee"
 								className="coin form-field"
-								value={state.fee.toFixed(8)} step={SATOSHI}
-								min={0} readOnly />
+								value={state.fee.toFixed(8)} min={0} readOnly />
 						</td>
 					</tr>
 					<tr>
@@ -820,9 +818,9 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 };
 
 type CoinInputProps = {
-	value: number,
+	value: Decimal,
 	dispatch: (v: any) => void,
-	step: number,
+	step: Decimal,
 	digits?: number,
 	disabled?: boolean,
 };
@@ -873,30 +871,31 @@ const C = {
 
 const CoinInput = ({ value, dispatch, step, digits = 8,
 	disabled = false }: CoinInputProps) => {
-	const handleChange = React.useCallback((values: NumberFormatValues) =>
-		dispatch(values.floatValue), [dispatch]);
+	const handleChange = React.useCallback((values: NumberFormatValues) => {
+		console.log(values.value)
+		dispatch(new N(values.value))}, [dispatch]);
 
-	return <C.CoinInput.Container>
-		<NumberFormat value={value} onValueChange={handleChange}
-			className="coin form-field" decimalScale={digits}
-			allowLeadingZeros={false} fixedDecimalScale={true}
-			allowNegative={false} disabled={disabled} />
-		<C.CoinInput.ButtonsContainer>
-			<button onClick={() => dispatch(value + step)}>{UP_SYMBOL}</button>
-			<button disabled={value - step < 0} onClick={() =>
-				dispatch(value - step)}>{DOWN_SYMBOL}</button>
-		</C.CoinInput.ButtonsContainer>
-	</C.CoinInput.Container>;
+return <C.CoinInput.Container>
+	<NumberFormat value={value.toFixed(digits)} onValueChange={handleChange}
+		className="coin form-field" decimalScale={digits}
+		allowLeadingZeros={false} fixedDecimalScale={true}
+		allowNegative={false} disabled={disabled} />
+	<C.CoinInput.ButtonsContainer>
+		<button onClick={() => dispatch(value.add(step))}>{UP_SYMBOL}</button>
+		<button disabled={value.minus(step).lt(0)} onClick={() =>
+			dispatch(value.sub(step))}>{DOWN_SYMBOL}</button>
+	</C.CoinInput.ButtonsContainer>
+</C.CoinInput.Container>;
 };
 
 const Trade = () => {
 	const initialState: TraderState = {
 		trade: -1,
 		base: PROPID_COIN,
-		price: 0,
-		quantity: 0,
-		fee: 0,
-		total: 0,
+		price: new N(0),
+		quantity: new N(0),
+		fee: new N(0),
+		total: new N(0),
 		orderType: "limit",
 		buysell: "buy",
 		isDivisible: true,

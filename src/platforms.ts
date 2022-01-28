@@ -1,3 +1,5 @@
+import N from 'decimal.js';
+
 const Platforms: Record<string, PlatformConstants> = {
 	FEATHERCOIN: {
 		COIN_NAME: "Feathercoin",
@@ -19,7 +21,7 @@ const Platforms: Record<string, PlatformConstants> = {
 		GENESIS_TIME: 1366147060,
 		OMNI_START_HEIGHT: 3454000,
 		OMNI_START_TIME: 1607663639,
-		MIN_CHANGE: 0.00000546,
+		MIN_CHANGE: new N(0.00000546),
 	},
 	LITECOIN: {
 		COIN_NAME: "Litecoin",
@@ -41,7 +43,7 @@ const Platforms: Record<string, PlatformConstants> = {
 		GENESIS_TIME: 1317972660,
 		OMNI_START_HEIGHT: 2093636,
 		OMNI_START_TIME: 1627314304,
-		MIN_CHANGE: 0.00005460,
+		MIN_CHANGE: new N(0.00005460),
 	},
 	BITCOIN: {
 		COIN_NAME: "Bitcoin",
@@ -63,7 +65,7 @@ const Platforms: Record<string, PlatformConstants> = {
 		GENESIS_TIME: 1317972660,
 		OMNI_START_HEIGHT: 2093636,
 		OMNI_START_TIME: 1627314304,
-		MIN_CHANGE: 0.00000546,
+		MIN_CHANGE: new N(0.00000546),
 	},
 }
 

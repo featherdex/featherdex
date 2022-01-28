@@ -1,5 +1,7 @@
 "use strict";
 
+import N from 'decimal.js';
+
 export const APP_NAME = "FeatherDeX Trader";
 export const LAYOUT_NAME = "layout.json";
 export const CONF_NAME = "config.json";
@@ -36,7 +38,7 @@ export const DOWN_SYMBOL = "\u25bc";
 export const PROPID_BITCOIN = 0;
 export const PROPID_COIN = 1;
 
-export const SATOSHI = 0.00000001;
+export const SATOSHI = new N("0.00000001");
 export const BLOCK_TIME = 60;
 
 export const EMPTY_TX_VSIZE = 10;
@@ -58,10 +60,11 @@ export enum OrderAction {
 	ORDER_CANCEL,
 };
 
-export const MIN_ACCEPT_FEE = 0.0001;
-export const MAX_ACCEPT_FEE = 0.1;
-export const COIN_FEERATE = 0.02;
-export const MIN_TRADE_FEE = 0.008;
-export const TRADE_FEERATE = 0.001;
+export const BITTREX_TRADE_FEERATE = new N("0.003");
+export const MIN_ACCEPT_FEE = new N("0.0001");
+export const MAX_ACCEPT_FEE = new N("0.1");
+export const COIN_FEERATE = new N("0.02");
+export const MIN_TRADE_FEE = new N("0.008");
+export const TRADE_FEERATE = new N("0.001");
 export const BLOCK_WAIT = 3;
 export const PAY_BLOCK_LIMIT = 50;

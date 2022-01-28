@@ -2,12 +2,11 @@
 
 import React from 'react';
 import useInterval from 'use-interval';
+import N from 'decimal.js';
 
 import AppContext from './contexts/AppContext';
 
 import api from './api';
-
-import sum from 'lodash/fp/sum';
 
 import { TraderState, TraderAction } from './Trade';
 
@@ -19,7 +18,7 @@ import {
 import {
 	repeatAsync, handlePromise, estimateTxFee, estimateBuyFee, estimateSellFee,
 	getPendingAccepts, getFillOrders, getAddressAssets, uniqueId, toFormattedAmount,
-	handleError
+	handleError, dsum
 } from './util';
 
 type OrderbookProps = {
@@ -41,19 +40,15 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 
 		const toData = (arr: BittrexBookEntry[]): BookData[] => {
 			let data: BookData[] = [];
-			let total = 0;
+			let total = new N(0);
 
 			for (let i = 0; i < arr.length; i++) {
-				const value =
-					parseFloat(arr[i].rate) * parseFloat(arr[i].quantity);
-				total += value;
+				const price = new N(arr[i].rate);
+				const quantity = new N(arr[i].quantity);
+				const value = price.mul(quantity).toDP(8);
+				total = total.add(value);
 
-				data.push({
-					price: parseFloat(arr[i].rate),
-					quantity: parseFloat(arr[i].quantity),
-					value: value,
-					total: total,
-				})
+				data.push({ price, quantity, value, total });
 			}
 
 			return data;
@@ -84,27 +79,26 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 
 		if (accepts === null) return;
 
-		let bids = new Map<number, number[]>();
+		let bids = new Map<Decimal, Decimal[]>();
 
 		let asks = orders.reduce((map, v) =>
-			map.set(parseFloat(v.unitprice),
-				[...(map.get(parseFloat(v.unitprice)) || []),
-				...(accepts[v.seller] || []), parseFloat(v.amountavailable)]),
-			new Map<number, number[]>());
+			map.set(new N(v.unitprice), [...(map.get(new N(v.unitprice)) || []),
+			...(accepts[v.seller] || []), new N(v.amountavailable)]),
+			new Map<Decimal, Decimal[]>());
 
 		dispatch({ type: "set_bids", payload: [] });
 		dispatch({
 			type: "set_asks",
-			payload: toData(Array.from(asks).sort((a, b) => a[0] - b[0]).map(v =>
-				({ rate: `${v[0]}`, quantity: sum(v[1]).toFixed(8) })))
+			payload: toData(Array.from(asks).sort((a, b) => +a[0] - +b[0]).map(v =>
+				({ rate: v[0].toFixed(8), quantity: dsum(v[1]).toFixed(8) })))
 		});
 
-		if (state.quantity > 0 &&
-			(state.price > 0 || state.orderType === "market")) {
-			let estFee = 0;
+		if (state.quantity.gt(0) &&
+			(state.price.gt(0) || state.orderType === "market")) {
+			let estFee = new N(0);
 
 			const book = state.buysell === "buy" ? Array.from(asks).sort((a, b) =>
-				a[0] - b[0]) : Array.from(bids).sort((a, b) => b[0] - a[0]);
+				+a[0] - +b[0]) : Array.from(bids).sort((a, b) => +b[0] - +a[0]);
 
 			// Correct price if MARKET order
 			if (state.orderType === "market") {
@@ -112,9 +106,9 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 				let remaining = state.quantity;
 
 				for (let i of book) {
-					if (remaining <= 0) break;
+					if (remaining.lte(0)) break;
 					price = i[0];
-					remaining -= sum(i[1]);
+					remaining = remaining.sub(dsum(i[1]));
 				}
 
 				dispatch({ type: "set_price", payload: price });
@@ -130,9 +124,9 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 			else {
 				if (state.buysell === "buy") {
 					const { fillOrders, fillRemaining } = await
-						getFillOrders(getConstants(), client, state.trade,
-							state.quantity, state.orderType === "limit" ?
-							state.price : undefined, state.isNoHighFees).catch(e => {
+						getFillOrders(client, state.trade, state.quantity,
+							state.orderType === "limit" ? state.price : undefined,
+							state.isNoHighFees).catch(e => {
 								handleError(e, "error");
 								return { fillOrders: null, fillRemaining: null };
 							}) as Awaited<ReturnType<typeof getFillOrders>>;
@@ -151,7 +145,7 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 							});
 					if (estFee === null) return;
 
-					if (fillRemaining > 0) estFee += postFee;
+					if (fillRemaining.gt(0)) estFee = estFee.add(postFee);
 				} else { // sell
 					const addressAssets = await
 						getAddressAssets(client, state.trade).catch(e => {
@@ -164,14 +158,14 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 
 					// Cannot find an address to fund everything
 					if (!addressAssets.find(v =>
-						v.amount >= state.quantity && !v.occupied && !v.pending)) {
+						v.amount.gte(state.quantity) && !v.occupied && !v.pending)) {
 						let remaining = state.quantity;
 
 						// Collect send inputs
 						for (let i of addressAssets) {
-							if (remaining <= 0) break;
+							if (remaining.lte(0)) break;
 							reshufflect++;
-							remaining -= i.amount;
+							remaining = remaining.sub(i.amount);
 						}
 					}
 
@@ -195,7 +189,7 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 	const createRows = (data: BookData[], side: string) => {
 		const total = data && data.length > 0 ? data[data.length - 1].total : 0;
 		const els = data.map((v) => {
-			const totp = v.total / total;
+			const totp = v.total.div(total).mul(100).toFixed(4);
 
 			let row = [<div key={uniqueId("orderbook-row-")}
 				className="td clickable"
@@ -203,25 +197,25 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 					if (state.orderType === "limit")
 						dispatch({ type: "set_price", payload: v.price });
 				}}>
-				{toFormattedAmount(v.price, settings.numformat, 8,
+				{toFormattedAmount(+v.price, settings.numformat, 8,
 					"decimal", side === "bid" ? "green" : "red")}
 			</div>,
 			<div key={uniqueId("orderbook-row-")} className="td clickable"
 				onClick={() =>
 					dispatch({ type: "set_quantity", payload: v.quantity })}>
-				{toFormattedAmount(v.quantity, settings.numformat, 8,
+				{toFormattedAmount(+v.quantity, settings.numformat, 8,
 					"decimal", "none")}
 			</div>,
 			<div key={uniqueId("orderbook-row-")} className="td clickable"
 				onClick={() =>
 					dispatch({ type: "set_total", payload: v.value })}>
-				{toFormattedAmount(v.value, settings.numformat, 8,
+				{toFormattedAmount(+v.value, settings.numformat, 8,
 					"decimal", "none")}
 			</div>,
 			<div key={uniqueId("orderbook-row-")} className="td clickable"
 				onClick={() =>
 					dispatch({ type: "set_total", payload: v.total })}>
-				{toFormattedAmount(v.total, settings.numformat, 8,
+				{toFormattedAmount(+v.total, settings.numformat, 8,
 					"decimal", "none")}
 			</div>];
 
@@ -232,10 +226,10 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 				<div key={uniqueId("orderbook-row-")} style={{
 					position: "absolute",
 					top: 0,
-					left: side === "bid" ? `calc(100% - ${totp * 100}%)` : 0,
+					left: side === "bid" ? `calc(100% - ${totp}%)` : 0,
 					backgroundColor: side === "bid" ?
 						"rgba(0, 185, 0, 0.2)" : "rgba(255, 0, 0, 0.2)",
-					width: `${totp * 100}%`,
+					width: `${totp}%`,
 					height: "24px",
 				}}></div>
 				{row}

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import useInterval from 'use-interval';
+import N from 'decimal.js';
 
 import { ipcRenderer } from 'electron';
 import { Column } from 'react-table';
@@ -177,10 +178,10 @@ const History = () => {
 				status: v.status,
 				idBuy: v.idBuy,
 				idSell: v.idSell,
-				quantity: v.quantity,
-				price: v.amount / v.quantity,
-				fee: v.fee,
-				total: v.amount + v.fee,
+				quantity: +v.quantity,
+				price: +v.amount.div(v.quantity).toDP(8),
+				fee: +v.fee,
+				total: +v.amount.add(v.fee),
 			}));
 
 		let bittrexData: Data[] = [];
@@ -199,8 +200,8 @@ const History = () => {
 					idBuy: v.direction === "BUY" ? PROPID_COIN : PROPID_BITCOIN,
 					idSell: v.direction === "SELL" ? PROPID_COIN : PROPID_BITCOIN,
 					quantity: parseFloat(v.fillQuantity),
-					price: (parseFloat(v.proceeds) - parseFloat(v.commission))
-						/ parseFloat(v.fillQuantity),
+					price: +(new N(v.proceeds).sub(new N(v.commission))
+						.div(new N(v.fillQuantity)).toDP(8)),
 					fee: parseFloat(v.commission),
 					total: parseFloat(v.proceeds),
 				}));

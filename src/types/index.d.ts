@@ -1,3 +1,8 @@
+type DateTime = import('luxon').DateTime;
+type BlockTree = import('functional-red-black-tree').Tree<number, number>;
+type UTCTimestamp = import('lightweight-charts').UTCTimestamp;
+type Decimal = import('decimal.js').Decimal;
+
 /**
  * From https://github.com/microsoft/TypeScript/blob/feac9eb126e56837d16acb61cd019ce8520db76c/src/lib/es5.d.ts#L1492-L1501
  * TODO Remove when TypeScript 4.5 is stable!
@@ -38,7 +43,7 @@ declare type DownloadProgress = {
 };
 
 declare type BlockTimeStruct = {
-	cache: import('functional-red-black-tree').Tree<number, number>,
+	cache: BlockTree,
 	push: (time: number, height: number) => void,
 }
 
@@ -65,7 +70,7 @@ declare type PlatformConstants = {
 	GENESIS_TIME: number,
 	OMNI_START_HEIGHT: number,
 	OMNI_START_TIME: number,
-	MIN_CHANGE: number,
+	MIN_CHANGE: Decimal,
 };
 
 declare type Property = {
@@ -95,16 +100,16 @@ declare type AssetBalance = {
 };
 
 declare type AssetTrade = {
-	time: import('lightweight-charts').UTCTimestamp,
+	time: UTCTimestamp,
 	txid: string,
 	block: number,
 	status: string,
 	idBuy: number,
 	idSell: number,
-	quantity: number,
-	remaining: number,
-	amount: number,
-	fee: number,
+	quantity: Decimal,
+	remaining: Decimal,
+	amount: Decimal,
+	fee: Decimal,
 	address?: string,
 };
 
@@ -152,9 +157,9 @@ declare type Purchase = {
 
 declare type FillOrder = {
 	address: string,
-	quantity: number,
-	payAmount: number,
-	minFee: number,
+	quantity: Decimal,
+	payAmount: Decimal,
+	minFee: Decimal,
 }
 
 declare type RawTxBlueprint = {
@@ -263,10 +268,10 @@ declare type Block = {
 };
 
 declare type BookData = {
-	price: number,
-	quantity: number,
-	value: number,
-	total: number,
+	price: Decimal,
+	quantity: Decimal,
+	value: Decimal,
+	total: Decimal,
 };
 
 declare type FundRawOptions = {
@@ -290,7 +295,7 @@ declare type RequestOptions = {
 
 declare type Ticker = {
 	market: string,
-	last: { time: import('luxon').DateTime, price: number },
+	last: { time: DateTime, price: number },
 	chg: number,
 	chgp: number,
 	bid: number,

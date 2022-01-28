@@ -1,13 +1,17 @@
 "use strict";
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 import React from 'react';
+import N from 'decimal.js';
 import Client from 'bitcoin-core';
 import AbortController from 'abort-controller';
 import getAppDataPath from 'appdata-path';
 import ini from 'ini';
 import fetch from 'node-fetch';
-import sum from 'lodash/fp/sum';
 
+import { app, BrowserWindow, ipcRenderer } from 'electron';
 import { Mutex } from 'async-mutex';
 import {
 	BarData, LineData, WhitespaceData, UTCTimestamp
@@ -19,16 +23,11 @@ import Order from './order';
 import Platforms from './platforms';
 
 import {
-	APP_NAME, LAYOUT_NAME, CONF_NAME, SATOSHI, COIN_FEERATE,
+	APP_NAME, LAYOUT_NAME, CONF_NAME, COIN_FEERATE, SATOSHI,
 	MAX_ACCEPT_FEE, EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE, OPRETURN_ACCEPT_VSIZE,
 	OPRETURN_SEND_VSIZE, OPRETURN_ORDER_VSIZE, ACCOUNT_LABEL, OrderAction
 } from './constants';
 import { defaultLayout, defaultRPCSettings, defaultSettings } from './defaults';
-
-import * as fs from 'fs';
-import * as path from 'path';
-
-import { app, BrowserWindow, ipcRenderer } from 'electron';
 
 let lastId = 0;
 const rootPath = getAppDataPath(APP_NAME);
@@ -37,6 +36,8 @@ const logger = require('simple-node-logger').createSimpleLogger({
 	logFilePath: path.join(rootPath, 'featherdex.log'),
 	timestampFormat: 'YYYY-MM-DD HH:mm:ss.SSS',
 });
+
+export const dsum = (arr: Decimal[]) => arr.reduce((pv, v) => pv.add(v), new N(0));
 
 export function log() {
 	return logger;
@@ -73,10 +74,6 @@ export function isInteger(val: any) {
 
 export function parseBoolean(val: any) {
 	return String(val).toLowerCase() === "true";
-}
-
-export function roundn(v: number, n: number): number {
-	return Number(Math.round(Number(`${v.toString()}e${n.toString()}`)) + "e-" + n)
 }
 
 export async function promiseStatus(p: Promise<unknown>):
@@ -386,10 +383,10 @@ export function toCandle(d: (BarData | LineData | WhitespaceData)[],
 	return data;
 }
 
-export function tradeToLineData(trade: AssetTrade) {
+export function tradeToLineData(trade: AssetTrade): LineData {
 	return {
 		time: trade.time,
-		value: roundn(trade.amount / trade.quantity, 8),
+		value: +trade.amount.div(trade.quantity).toDP(8),
 	};
 }
 
@@ -405,7 +402,7 @@ export function toTradeInfo(consts: PlatformConstants,
 		let tradeInfo = `${v.type} ${v.direction} `;
 
 		if (v.type === "LIMIT")
-			tradeInfo += `${parseFloat(v.quantity).toFixed(8)} ${COIN_TICKER}`
+			tradeInfo += `${new N(v.quantity).toFixed(8)} ${COIN_TICKER}`
 				+ ` @${v.limit} ${COIN_BASE_TICKER}, filled `;
 
 		tradeInfo +=
@@ -423,6 +420,29 @@ export function toTradeInfo(consts: PlatformConstants,
 			+ `${v.fee.toFixed(8)} ${COIN_TICKER} fees`;
 }
 
+export function tickersEqual(a: Map<number, Ticker>, b: Map<number, Ticker>) {
+	if (a.size !== b.size) return false;
+
+	for (let [k, v] of a) {
+		const tv = b.get(k);
+		if (tv.ask !== v.ask || tv.bid !== v.bid || tv.chg !== v.chg
+			|| tv.chgp !== v.chgp || tv.last.price !== v.last.price
+			|| +tv.last.time !== +v.last.time || tv.market !== v.market
+			|| tv.vol !== v.vol
+			|| (tv === undefined && !b.has(k))) return false;
+	}
+	return true;
+}
+
+export function propsEqual(a: PropertyList, b: PropertyList) {
+	if (a.length !== b.length) return false;
+
+	for (let i = 0; i < a.length; i++)
+		if (a[i].id !== b[i].id || a[i].name !== b[i].name) return false;
+
+	return true;
+}
+
 export async function estimateTxFee(client: typeof Client, rawtx: string,
 	size?: number) {
 	const API = api(client);
@@ -434,7 +454,7 @@ export async function estimateTxFee(client: typeof Client, rawtx: string,
 
 	const fee = await repeatAsync(API.estimateFee, 3)().catch(_ => COIN_FEERATE);
 
-	return Math.ceil(vsize / 1000.0 * fee * (1 / SATOSHI)) * SATOSHI;
+	return new N(vsize).div(new N("1000")).mul(fee).toDP(8, N.ROUND_CEIL);
 }
 
 export async function estimateBuyFee(consts: PlatformConstants,
@@ -447,12 +467,13 @@ export async function estimateBuyFee(consts: PlatformConstants,
 		+ (orders.length + 2) * TX_O_VSIZE);
 
 	let acceptFees = orders.reduce((map, v) =>
-		map.set(v.address, Math.max(defaultAcceptFee, v.minFee)),
-		new Map<string, number>());
+		map.set(v.address, N.max(defaultAcceptFee, v.minFee)),
+		new Map<string, Decimal>());
 
 	return {
 		acceptFees, payFee,
-		totalFee: roundn(sum([...acceptFees.values()]) + payFee + 2 * MIN_CHANGE, 8)
+		totalFee: dsum([...acceptFees.values()])
+			.add(payFee).add(MIN_CHANGE.mul(2)).toDP(8),
 	};
 }
 
@@ -467,12 +488,12 @@ export async function estimateSellFee(consts: PlatformConstants,
 
 	return {
 		sendFee, postFee,
-		totalFee: roundn(reshufflect * sendFee + postFee + MIN_CHANGE, 8)
+		totalFee: sendFee.mul(reshufflect).add(postFee).add(MIN_CHANGE).toDP(8),
 	};
 }
 
 export async function createRawSend(consts: PlatformConstants, client: typeof Client,
-	recipient: string, propid: number, amount: number, inUTXO: UTXO, fee: number) {
+	recipient: string, propid: number, amount: Decimal, inUTXO: UTXO, fee: Decimal) {
 	const API = api(client);
 	const { MIN_CHANGE } = consts;
 
@@ -481,15 +502,15 @@ export async function createRawSend(consts: PlatformConstants, client: typeof Cl
 			throw new Error("Could not create simple send payload");
 		});
 
-	const change = roundn(inUTXO.amount - fee, 8);
+	const change = new N(inUTXO.amount).sub(fee).toDP(8);
 
-	if (change < MIN_CHANGE)
+	if (change.lt(MIN_CHANGE))
 		throw new Error("Could not create raw send transaction, fee too high");
 
 	const pretx = await repeatAsync(API.createRawTransaction, 3)
 		({
 			ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }],
-			outs: [{ [recipient]: change }],
+			outs: [{ [recipient]: +change }],
 		}).catch(_ => {
 			throw new Error("Could not create raw send transaction (part 1)");
 		});
@@ -503,8 +524,8 @@ export async function createRawSend(consts: PlatformConstants, client: typeof Cl
 }
 
 export async function createRawAccept(consts: PlatformConstants,
-	client: typeof Client, seller: string, propid: number, amount: number,
-	inUTXO: UTXO, fee: number) {
+	client: typeof Client, seller: string, propid: number, amount: Decimal,
+	inUTXO: UTXO, fee: Decimal) {
 	const API = api(client);
 	const { MIN_CHANGE } = consts;
 
@@ -513,15 +534,15 @@ export async function createRawAccept(consts: PlatformConstants,
 			throw new Error("Could not create dex accept payload");
 		});
 
-	const change = roundn(inUTXO.amount - MIN_CHANGE - fee, 8);
+	const change = new N(inUTXO.amount).sub(MIN_CHANGE).sub(fee).toDP(8);
 
-	if (change < MIN_CHANGE)
+	if (change.lt(MIN_CHANGE))
 		throw new Error("Could not create raw accept transaction, fee too high");
 
 	const pretx = await repeatAsync(API.createRawTransaction, 3)
 		({
 			ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }],
-			outs: [{ [inUTXO.address]: change }, { [seller]: MIN_CHANGE }],
+			outs: [{ [inUTXO.address]: +change }, { [seller]: +MIN_CHANGE }],
 		}).catch(_ => {
 			throw new Error("Could not create raw accept transaction (part 1)");
 		});
@@ -535,21 +556,20 @@ export async function createRawAccept(consts: PlatformConstants,
 }
 
 export async function createRawPay(consts: PlatformConstants, client: typeof Client,
-	orders: { address: string, amount: number }[], inUTXO: UTXO, fee: number) {
+	orders: { address: string, amount: Decimal }[], inUTXO: UTXO, fee: Decimal) {
 	const API = api(client);
 	const { MIN_CHANGE, EXODUS_ADDRESS } = consts;
 
-	const total = sum(orders.map(v => v.amount));
-	const change = roundn(inUTXO.amount - MIN_CHANGE - total - fee, 8);
+	const total = dsum(orders.map(v => v.amount));
+	const change = new N(inUTXO.amount).sub(MIN_CHANGE).sub(total).sub(fee).toDP(8);
 
-	if (change < MIN_CHANGE)
+	if (change.lt(MIN_CHANGE))
 		throw new Error(`UTXO not large enough input=${inUTXO.amount},`
-			+ ` total=${total}, fee=${roundn(fee + MIN_CHANGE, 8)}`);
+			+ ` total=${total}, fee=${fee.add(MIN_CHANGE).toDP(8)}`);
 
 	let outs: RawTxBlueprint["outs"] =
-		[{ [inUTXO.address]: change }, { [EXODUS_ADDRESS]: MIN_CHANGE }];
-	outs.push(...orders.map(order =>
-		({ [order.address]: roundn(order.amount, 8) })));
+		[{ [inUTXO.address]: +change }, { [EXODUS_ADDRESS]: +MIN_CHANGE }];
+	outs.push(...orders.map(order => ({ [order.address]: +order.amount.toDP(8) })));
 
 	const rawtx = await repeatAsync(API.createRawTransaction, 3)({
 		ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }], outs: outs
@@ -562,7 +582,7 @@ export async function createRawPay(consts: PlatformConstants, client: typeof Cli
 
 export async function createRawOrder(consts: PlatformConstants,
 	client: typeof Client, propid: number, action: OrderAction, inUTXO: UTXO,
-	fee = 0, quantity = 0, price = 0) {
+	fee = new N(0), quantity = new N(0), price = new N(0)) {
 	const API = api(client);
 	const { MIN_CHANGE } = consts;
 
@@ -572,9 +592,9 @@ export async function createRawOrder(consts: PlatformConstants,
 		"Could not create payload for raw order transaction");
 	if (payload === null) return;
 
-	const change = roundn(inUTXO.amount - fee, 8);
+	const change = new N(inUTXO.amount).sub(fee).toDP(8);
 
-	if (change < MIN_CHANGE)
+	if (change.lt(MIN_CHANGE))
 		throw new Error("Could not create raw order transaction, fee too high");
 
 	logger.debug("inUTXO")
@@ -583,7 +603,7 @@ export async function createRawOrder(consts: PlatformConstants,
 
 	const pretx = await repeatAsync(API.createRawTransaction, 3)({
 		ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }],
-		outs: [{ [inUTXO.address]: change }],
+		outs: [{ [inUTXO.address]: +change }],
 	});
 
 	return await repeatAsync(API.createRawTxOpReturn, 3)(pretx, payload);
@@ -599,21 +619,23 @@ export async function getPendingAccepts(client: typeof Client, propid?: number,
 		});
 
 	return await Promise.all(pending.map(p =>
-		repeatAsync(API.getPayload, 5)(p.txid).then(s => ({
-			address: p.referenceaddress,
-			amount: parseInt(s.payload.slice(16), 16),
-		})))).then(arr => arr.reduce((map, v) =>
-			map.set(v.address, [...(map.get(v.address) || []), -v.amount]),
-			new Map<string, number[]>()), _ => {
+		repeatAsync(API.getPayload, 5)(p.txid).then(s => {
+			const rawamt = new N(parseInt(s.payload.slice(16), 16));
+			return {
+				address: p.referenceaddress,
+				amount: p.divisible ? rawamt.times(SATOSHI) : rawamt,
+			};
+		}))).then(arr => arr.reduce((map, v) =>
+			map.set(v.address, [...(map.get(v.address) || []), v.amount.neg()]),
+			new Map<string, Decimal[]>()), _ => {
 				throw new Error("Could not get payload of pending accepts");
 			});
 }
 
 // Get a list of orders to fill based on the asset ID and quantity
-export async function getFillOrders(consts: PlatformConstants, client: typeof Client,
-	propid: number, quantity: number, price?: number, isNoHighFees = true) {
+export async function getFillOrders(client: typeof Client, propid: number,
+	quantity: Decimal, price?: Decimal, isNoHighFees = true) {
 	const API = api(client);
-	const { COIN_NAME } = consts;
 
 	// Get orderbook sells
 	const sells: DexSell[] = await repeatAsync
@@ -658,35 +680,36 @@ export async function getFillOrders(consts: PlatformConstants, client: typeof Cl
 	logger.debug("fill order loop")
 	for (let i of sells) {
 		if (pendingCancels.has(i.seller)
-			|| (isNoHighFees && parseFloat(i.minimumfee) > MAX_ACCEPT_FEE)) continue;
+			|| (isNoHighFees && new N(i.minimumfee).gt(MAX_ACCEPT_FEE))) continue;
 
 		logger.debug("sell")
 		logger.debug(i)
 
-		const orderAmount = parseFloat(i.amountavailable)
-			+ sum(pendingAccepts.get(i.seller) || []); // pendings are negative
-		const orderPrice = parseFloat(i.unitprice);
+		// pendings are negative
+		const orderAmount = new N(i.amountavailable)
+			.plus(dsum(pendingAccepts.get(i.seller) || []).toDP(8));
+		const orderPrice = new N(i.unitprice);
 
-		if (orderPrice > price) break;
+		if (orderPrice.gt(price)) break;
 
-		if (orderAmount >= fillRemaining) {
+		if (orderAmount.gte(fillRemaining)) {
 			logger.debug("exiting loop")
 			fillOrders.push({
 				address: i.seller,
-				quantity: roundn(fillRemaining, 8),
-				payAmount: roundn(fillRemaining * orderPrice, 8),
-				minFee: parseFloat(i.minimumfee),
+				quantity: fillRemaining,
+				payAmount: fillRemaining.mul(orderPrice).toDP(8),
+				minFee: new N(i.minimumfee),
 			});
 			break;
 		}
 
 		fillOrders.push({
 			address: i.seller,
-			quantity: roundn(orderAmount, 8),
-			payAmount: roundn(orderAmount * orderPrice, 8),
-			minFee: parseFloat(i.minimumfee),
+			quantity: orderAmount,
+			payAmount: orderAmount.mul(orderPrice).toDP(8),
+			minFee: new N(i.minimumfee),
 		});
-		fillRemaining -= orderAmount;
+		fillRemaining = fillRemaining.sub(orderAmount);
 	}
 
 	return { fillOrders, fillRemaining };
@@ -699,10 +722,9 @@ export async function getAddressAssets(client: typeof Client, propid: number) {
 	const pendingSells = await repeatAsync(API.getPendingTxs, 3)().then(pending =>
 		pending.filter(v => v.type === "DEx Sell Offer"
 			&& (v as DexOrder).propertyid === propid).reduce((map, v) =>
-				map.set(v.sendingaddress,
-					[...(map.get(v.sendingaddress) || []),
-					-parseFloat((v as DexOrder).amount)]),
-				new Map<string, number[]>()), _ => {
+				map.set(v.sendingaddress, [...(map.get(v.sendingaddress) || []),
+				new N((v as DexOrder).amount).neg()]),
+				new Map<string, Decimal[]>()), _ => {
 					throw new Error("Could not get pending sells for filtering");
 				});
 
@@ -717,25 +739,25 @@ export async function getAddressAssets(client: typeof Client, propid: number) {
 				address: v.address,
 				propertyid: w.propertyid,
 				name: w.name,
-				balance: parseFloat(w.balance)
-					+ sum(pendingSells.get(v.address) || []),
-				reserved: parseFloat(w.reserved),
-				frozen: parseFloat(w.reserved),
+				balance: new N(w.balance)
+					.add(dsum(pendingSells.get(v.address) || [])),
+				reserved: new N(w.reserved),
+				frozen: new N(w.reserved),
 			}))).filter(v =>
-				v.propertyid === propid && v.balance > 0).map(v =>
+				v.propertyid === propid && v.balance.gt(0)).map(v =>
 				({
 					address: v.address,
 					amount: v.balance,
-					occupied: v.reserved > 0,
+					occupied: v.reserved.gt(0),
 					pending: !!pendingSells.get(v.address),
-				})).sort((a, b) => b.amount - a.amount), _ => {
+				})).sort((a, b) => +b.amount - +a.amount), _ => {
 					throw new Error("Could not obtain wallet address balances");
 				});
 
 	return addressAssets;
 }
 
-export function toUTXO(txid: string, vout: number, address: string, amount: number):
+export function toUTXO(txid: string, vout: number, address: string, amount: Decimal):
 	UTXO {
 	return {
 		txid: txid,
@@ -744,7 +766,7 @@ export function toUTXO(txid: string, vout: number, address: string, amount: numb
 		label: "", // unused
 		redeemScript: "", // unused
 		scriptPubKey: "", // unused
-		amount: amount,
+		amount: +amount,
 		confirmations: 0, // unused
 		spendable: true,
 		solvable: true,

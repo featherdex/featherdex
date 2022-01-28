@@ -179,10 +179,10 @@ const Sales = () => {
 			tradeData = trades.filter(trade => trade.idBuy === id).map(v => ({
 				time: { time: v.time, txid: v.txid },
 				status: v.status,
-				quantity: { color: "none", quantity: v.quantity },
-				price: { color: "none", price: v.amount / v.quantity },
-				fee: { color: "none", fee: v.fee },
-				total: { color: "none", total: v.amount + v.fee },
+				quantity: { color: "none", quantity: +v.quantity },
+				price: { color: "none", price: +v.amount.div(v.quantity).toDP(8) },
+				fee: { color: "none", fee: +v.fee },
+				total: { color: "none", total: +v.amount.add(v.fee) },
 			}));
 		} else {
 			tradeData = (await API.getBittrexMktHistory(COIN_MARKET).catch((err) => {

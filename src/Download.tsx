@@ -7,7 +7,7 @@ import { Line } from 'rc-progress';
 
 import AppContext from './contexts/AppContext';
 
-import { downloadFile, roundn, uniqueId, promiseStatus } from './util';
+import { downloadFile, uniqueId, promiseStatus } from './util';
 import { X_SYMBOL } from './constants';
 
 type DownloadInfoProps = {
@@ -97,8 +97,8 @@ const Download = ({ isOpen, closeModalCallback }: DownloadProps) => {
 		setDownloads(down => {
 			if (down.has(id)) {
 				const u: Partial<DownloadInfoProps> = status !== null ? {
-					down: roundn(status.downBytes / 10e6, 3),
-					total: roundn(status.totalBytes / 10e6, 3),
+					down: Math.round(status.downBytes * 10e-3) * 10e-3,
+					total: Math.round(status.totalBytes * 10e-3) * 10e-3,
 					pct: Math.round(status.downBytes
 						/ (status.totalBytes || 1) * 100),
 				} : { status: "Stopped" };
