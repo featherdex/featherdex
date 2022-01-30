@@ -1,11 +1,13 @@
 "use strict";
 
 import React from 'react';
+import styled from 'styled-components';
 import useInterval from 'use-interval';
 import N from 'decimal.js';
 
-import AppContext from './contexts/AppContext';
+import { Mutex } from 'async-mutex';
 
+import AppContext from './contexts/AppContext';
 import api from './api';
 
 import { TraderState, TraderAction } from './Trade';
@@ -29,7 +31,9 @@ type OrderbookProps = {
 const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 	const { settings, getClient, getConstants } = React.useContext(AppContext);
 
-	const refreshData = async () => {
+	const refreshMutex = React.useMemo(() => new Mutex(), []);
+
+	const refreshData = () => refreshMutex.runExclusive(async () => {
 		if (state.trade === -1 || state.base === -1
 			|| state.trade === state.base
 			|| (state.trade > PROPID_COIN && state.base === PROPID_BITCOIN)) {
@@ -79,35 +83,37 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 
 		if (accepts === null) return;
 
-		let bids = new Map<Decimal, Decimal[]>();
+		let bids = new Map<string, Decimal[]>();
 
 		let asks = orders.reduce((map, v) =>
-			map.set(new N(v.unitprice), [...(map.get(new N(v.unitprice)) || []),
+			map.set(v.unitprice, [...(map.get(v.unitprice) || []),
 			...(accepts[v.seller] || []), new N(v.amountavailable)]),
-			new Map<Decimal, Decimal[]>());
+			new Map<string, Decimal[]>());
 
 		dispatch({ type: "set_bids", payload: [] });
 		dispatch({
 			type: "set_asks",
 			payload: toData(Array.from(asks).sort((a, b) => +a[0] - +b[0]).map(v =>
-				({ rate: v[0].toFixed(8), quantity: dsum(v[1]).toFixed(8) })))
+				({ rate: v[0], quantity: dsum(v[1]).toFixed(8) })))
 		});
 
 		if (state.quantity.gt(0) &&
 			(state.price.gt(0) || state.orderType === "market")) {
 			let estFee = new N(0);
 
-			const book = state.buysell === "buy" ? Array.from(asks).sort((a, b) =>
-				+a[0] - +b[0]) : Array.from(bids).sort((a, b) => +b[0] - +a[0]);
+			const book = state.buysell === "buy" ?
+				Array.from(asks).sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]))
+				: Array.from(bids).sort((a, b) =>
+					parseFloat(b[0]) - parseFloat(a[0]));
 
 			// Correct price if MARKET order
 			if (state.orderType === "market") {
-				let price = book[0][0];
+				let price = new N(book[0][0]);
 				let remaining = state.quantity;
 
 				for (let i of book) {
 					if (remaining.lte(0)) break;
-					price = i[0];
+					price = new N(i[0]);
 					remaining = remaining.sub(dsum(i[1]));
 				}
 
@@ -180,9 +186,9 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 
 			dispatch({ type: "set_fee", payload: estFee });
 		}
-	}
+	});
 
-	React.useMemo(refreshData,
+	React.useEffect(() => { refreshData(); },
 		[state.base, state.trade, state.quantity, state.price, state.isNoHighFees]);
 	useInterval(refreshData, 1500);
 
@@ -246,37 +252,48 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 				"Cannot trade Omni asset with Bitcoin" : null)),
 		[state.trade, state.base]);
 
-	const bidRows =
-		React.useMemo(() => createRows(state.bids, "bid"), [state.bids]);
-	const askRows =
-		React.useMemo(() => createRows(state.asks, "ask"), [state.asks]);
+	const bidRows = React.useMemo(() => createRows(state.bids, "bid"), [state.bids]);
+	const askRows = React.useMemo(() => createRows(state.asks, "ask"), [state.asks]);
 
-	return <>
-		<div className="order-table order-bid">
-			<div className="order-header">
-				<div className="th">Total</div>
-				<div className="th">Value</div>
-				<div className="th">Quantity</div>
-				<div className="th">Price</div>
+	return <C.Container>
+		{bidRows.length > 0 ? <C.Scroll>
+			<div className="order-table order-bid">
+				<div className="order-header">
+					{bidRows.length > 0 && <div className="th"></div>}
+					<div className="th">Total</div>
+					<div className="th">Value</div>
+					<div className="th">Quantity</div>
+					<div className="th">Price</div>
+				</div>
+				{bidRows}
 			</div>
-			<div className="order-body">
-				{bidRows.length > 0 ? bidRows :
-					<div className="empty">{error ? error : "No bids"}</div>}
+		</C.Scroll> : <div className="empty"
+			style={{ width: "50%", fontSize: "9pt" }}>{error ?? "No bids"}</div>}
+		{askRows.length > 0 ? <C.Scroll>
+			<div className="order-table order-ask">
+				<div className="order-header">
+					{askRows.length > 0 && <div className="th"></div>}
+					<div className="th">Price</div>
+					<div className="th">Quantity</div>
+					<div className="th">Value</div>
+					<div className="th">Total</div>
+				</div>
+				{askRows}
 			</div>
-		</div>
-		<div className="order-table order-ask">
-			<div className="order-header">
-				<div className="th">Price</div>
-				<div className="th">Quantity</div>
-				<div className="th">Value</div>
-				<div className="th">Total</div>
-			</div>
-			<div className="order-body">
-				{askRows.length > 0 ? askRows :
-					<div className="empty">{error ? error : "No bids"}</div>}
-			</div>
-		</div>
-	</>;
+		</C.Scroll> : <div className="empty"
+			style={{ width: "50%", fontSize: "9pt" }}>{error ?? "No bids"}</div>}
+	</C.Container>;
+};
+
+const C = {
+	Container: styled.div`
+	display: flex;
+	flex-flow: row;
+	height: 100%;`,
+	Scroll: styled.div`
+	flex: 1;
+	overflow-y: scroll;
+	height: 100%;`,
 };
 
 export default Orderbook;

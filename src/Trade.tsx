@@ -1,26 +1,26 @@
 import React from 'react';
 import N from 'decimal.js';
-import NumberFormat from 'react-number-format';
 import styled from 'styled-components';
+import useInterval from 'use-interval';
 
-import { NumberFormatValues } from 'react-number-format';
+import { Mutex } from 'async-mutex';
 
 import AppContext from './contexts/AppContext';
-
 import Order from './order';
 import api from './api';
 import AssetSearch from './AssetSearch';
 import Orderbook from './Orderbook';
+import CoinInput from './CoinInput';
 
 import {
 	repeatAsync, handleError, handlePromise, getFillOrders, getAddressAssets,
 	toTradeInfo, estimateSellFee, estimateBuyFee, createRawAccept,
-	createRawPay, createRawSend, createRawOrder, fundTx, signTx, sendTx, toUTXO,
-	notify, log
+	createRawPay, createRawOrder, fundTx, signTx, sendTx, toUTXO,
+	chainSend, notify, log
 } from './util';
 import {
-	SATOSHI, TRADE_FEERATE, MIN_TRADE_FEE, UP_SYMBOL, DOWN_SYMBOL, PROPID_BITCOIN,
-	PROPID_COIN, ACCOUNT_LABEL, BITTREX_TRADE_FEERATE, OrderAction
+	SATOSHI, TRADE_FEERATE, MIN_TRADE_FEE, PROPID_BITCOIN, PROPID_COIN,
+	ACCOUNT_LABEL, BITTREX_TRADE_FEERATE, OrderAction
 } from './constants';
 
 export type TraderState = {
@@ -30,6 +30,7 @@ export type TraderState = {
 	quantity: Decimal,
 	fee: Decimal,
 	total: Decimal,
+	available: Decimal,
 	orderType: "market" | "limit",
 	buysell: "buy" | "sell",
 	isDivisible: boolean,
@@ -40,7 +41,7 @@ export type TraderState = {
 }
 
 export type TraderAction = {
-	type: "set_price" | "set_quantity" | "set_fee" | "set_total"
+	type: "set_price" | "set_quantity" | "set_fee" | "set_total" | "set_available"
 	| "set_divisible" | "set_confirm" | "set_nohighfees" | "set_ordertype"
 	| "set_buysell" | "set_trade" | "set_base" | "set_bids" | "set_asks",
 	payload?: any,
@@ -67,6 +68,8 @@ const reducerTrade =
 		switch (action.type) {
 			case "set_price":
 				{
+					log().debug("set_price")
+					log().debug(action.payload)
 					const price = new N(action.payload).toDP(8);
 					let v = { ...state, price: price };
 					if (v.base === PROPID_BITCOIN) {
@@ -84,7 +87,8 @@ const reducerTrade =
 				}
 			case "set_quantity":
 				{
-					console.log("hello)")
+					log().debug("set_quantity")
+					log().debug(action.payload)
 					const quantity = new N(action.payload).toDP(8);
 					let v = { ...state, quantity: quantity };
 					if (v.base === PROPID_BITCOIN) {
@@ -103,6 +107,8 @@ const reducerTrade =
 				}
 			case "set_fee":
 				{
+					log().debug("set_fee")
+					log().debug(action.payload)
 					const fee = new N(action.payload).toDP(8);
 					return {
 						...state, fee,
@@ -110,6 +116,8 @@ const reducerTrade =
 					};
 				}
 			case "set_total":
+				log().debug("set_total")
+				log().debug(action.payload)
 				const payload = new N(action.payload).toDP(8);
 				const fee = state.base === PROPID_BITCOIN ?
 					new N(action.payload).times(BITTREX_TRADE_FEERATE)
@@ -128,11 +136,18 @@ const reducerTrade =
 				}
 				if (total.lt(fee)) total = fee;
 
+				if (state.price.eq(0))
+					return { ...state, total, fee, quantity: new N(0) };
+
+				if (state.price.mul(state.quantity).add(fee).toDP(8).eq(total))
+					return { ...state, total, fee };
+
 				return {
 					...state, total, fee,
-					quantity: state.price.eq(0) ?
-						new N(0) : total.minus(fee).div(state.price).toDP(8),
+					quantity: total.minus(fee).div(state.price).toDP(8),
 				};
+			case "set_available":
+				return { ...state, available: action.payload };
 			case "set_divisible":
 				return { ...state, isDivisible: action.payload };
 			case "set_confirm":
@@ -169,6 +184,9 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		settings, getClient, getConstants, addPendingOrder
 	} = React.useContext(AppContext);
 
+	const tradeMutex = React.useMemo(() => new Mutex(), []);
+	const availMutex = React.useMemo(() => new Mutex(), []);
+
 	const cDispatch = (type: TraderAction["type"]) => (payload: any) =>
 		dispatch({ type, payload });
 
@@ -203,7 +221,48 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		}
 	}
 
-	const doTrade = async () => {
+	const refreshAvailable = () => availMutex.runExclusive(async () => {
+		const { COIN_TICKER, COIN_BASE_TICKER } = getConstants();
+		const API = api(getClient());
+
+		if (state.trade === -1) return;
+
+		if (state.trade === PROPID_COIN) {
+			if (settings.apikey.length === 0 || settings.apisecret.length === 0)
+				return;
+			const balance = await handlePromise(repeatAsync(API.getBittrexBalance, 5)
+				(settings.apikey, settings.apisecret, state.buysell === "buy" ?
+					COIN_BASE_TICKER : COIN_TICKER),
+				"Could not get Bittrex balance");
+
+			dispatch({
+				type: "set_available",
+				payload: balance !== null ? new N(balance.available) : new N(0),
+			});
+			return;
+		}
+
+		let balance = null;
+		if (state.buysell === "buy")
+			balance = await handlePromise(repeatAsync(API.getCoinBalance, 5)(),
+				"Could not get coin balance");
+		else
+			balance = await handlePromise(repeatAsync(API.getWalletAssets, 3)(),
+				"Could not get wallet balances", arr => {
+					const entry = arr.find(v => v.propertyid === state.trade);
+					return entry !== undefined ? entry.balance : null;
+				});
+
+		dispatch({
+			type: "set_available",
+			payload: balance !== null ? new N(balance) : new N(0),
+		});
+	});
+
+	React.useEffect(() => { refreshAvailable(); }, [state.trade, state.buysell]);
+	useInterval(refreshAvailable, 30000);
+
+	const doTrade = () => tradeMutex.runExclusive(async () => {
 		const logger = log();
 		const consts = getConstants();
 		const { COIN_MARKET, COIN_TICKER, COIN_BASE_TICKER, MIN_CHANGE } = consts;
@@ -591,39 +650,14 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				logger.debug(utxo)
 			}
 
-			logger.debug("chain send tx loop")
-			// Chain send transactions
-			for (let i = 0; i < reshuffleAddresses.length; i++) {
-				const nextAddress = i === reshuffleAddresses.length - 1 ?
-					address : reshuffleAddresses[i + 1].address;
-				const amount = reshuffleAddresses[i].amount;
+			// Chain send the assets to [address]
+			{
+				const chain = await chainSend(consts, client, state.trade,
+					reshuffleAddresses, utxo, address, tradeFee.sendFee, waitTXs);
+				if (chain === null) return;
 
-				logger.debug(`i=${i} nextAddress=${nextAddress} amount=${amount}`)
-				logger.debug("createRawSend")
-				const rawtx = await createRawSend(consts, client, nextAddress,
-					state.trade, amount, utxo, tradeFee.sendFee).catch(e => {
-						handleError(e, "error");
-						return null;
-					});
-				if (rawtx === null) return;
-
-				const signedtx = await signTx(client, rawtx,
-					"Could not sign raw reshuffle transaction for sell");
-				if (signedtx === null) return;
-
-				const sendtx = await sendTx(client, signedtx,
-					"Could not send raw reshuffle transaction for sell");
-				if (sendtx === null) return;
-
-				logger.debug("push wait")
-				// Push to waiting queue, wait for all then send in order
-				waitTXs.push(sendtx);
-
-				utxo = toUTXO(sendtx, 0, nextAddress, new N(utxo.amount)
-					.sub(tradeFee.sendFee).toDP(8));
-
-				logger.debug("new utxo")
-				logger.debug(utxo)
+				utxo = chain.utxo;
+				waitTXs = chain.waitTXs;
 			}
 
 			// Now from [address] create the order transaction
@@ -661,12 +695,14 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 		logger.debug("run order")
 		order.run();
-	};
+	});
 
 	const setTrade = (propid: number) => {
 		const API = api(getClient());
 
 		dispatch({ type: "set_trade", payload: propid });
+
+		if (propid < PROPID_BITCOIN) return;
 
 		repeatAsync(API.getProperty, 5)(propid).then(p => p.divisible, _ => {
 			handleError(new Error("Could not query property info"), "error");
@@ -674,6 +710,13 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		}).then(divisible =>
 			dispatch({ type: "set_divisible", payload: divisible }));
 	}
+
+	const setMax = () => {
+		if (state.available.eq(0)) return;
+		if (state.buysell === "buy")
+			dispatch({ type: "set_total", payload: state.available });
+		else dispatch({ type: "set_quantity", payload: state.available });
+	};
 
 	return <>
 		<C.Trader.Body>
@@ -693,8 +736,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 							padding: "0 8px 0 8px"
 						}}>
 							<AssetSearch setAssetCallback={setTrade}
-								filter={v => v.id !== 0}
-								zIndex={2} />
+								filter={v => v.id !== 0} zIndex={2} />
 						</td>
 						<td style={{ fontSize: "9pt", textAlign: "right" }}>
 							Price:
@@ -733,14 +775,20 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 					</tr>
 					<tr>
 						<td style={{ fontSize: "9pt", textAlign: "right" }}>
-							Buy/Sell:
+							Order type:
 						</td>
 						<td style={{
 							textAlign: "right",
 							paddingRight: "8px"
 						}}>
-							<select name="buysell" value={state.buysell}
+							<select name="ordertype" value={state.orderType}
 								onChange={handleChangeSel}>
+								{state.buysell === "buy"
+									&& <option value="market">Market</option>}
+								<option value="limit">Limit</option>
+							</select>
+							<select name="buysell" value={state.buysell}
+								onChange={handleChangeSel} style={{ marginLeft: 8 }}>
 								<option value="buy">Buy</option>
 								<option value="sell">Sell</option>
 							</select>
@@ -756,18 +804,21 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 					</tr>
 					<tr>
 						<td style={{ fontSize: "9pt", textAlign: "right" }}>
-							Order type:
+							{state.base === PROPID_BITCOIN
+								&& state.buysell === "buy" ?
+								getConstants().COIN_BASE_TICKER
+								: (state.base === PROPID_COIN
+									&& state.buysell === "sell" ?
+									"Asset" : getConstants().COIN_TICKER)} in wallet:
 						</td>
 						<td style={{
 							textAlign: "right",
 							paddingRight: "8px"
 						}}>
-							<select name="ordertype" value={state.orderType}
-								onChange={handleChangeSel}>
-								{state.buysell === "buy"
-									&& <option value="market">Market</option>}
-								<option value="limit">Limit</option>
-							</select>
+							<input type="number" name="balance"
+								className="coin form-field"
+								value={state.available.toFixed(state.isDivisible ?
+									8 : 0)} min={0} readOnly />
 						</td>
 						<td style={{ fontSize: "9pt", textAlign: "right" }}>
 							Total:
@@ -808,6 +859,10 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 							<button style={{
 								display: "inline-block",
 								marginRight: "8px",
+							}} onClick={setMax}>Max</button>
+							<button style={{
+								display: "inline-block",
+								marginRight: "8px",
 							}} onClick={doTrade}>Confirm</button>
 						</td>
 					</tr>
@@ -817,40 +872,17 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 	</>;
 };
 
-type CoinInputProps = {
-	value: Decimal,
-	dispatch: (v: any) => void,
-	step: Decimal,
-	digits?: number,
-	disabled?: boolean,
-};
-
 const C = {
-	CoinInput: {
-		Container: styled.div`
+	Container: styled.div`
+	width: 100%;
+	height: 100%;
 	display: flex;
-	flex-direction: row;
-	`,
-		ButtonsContainer: styled.div`
-	display: flex;
-	flex-direction: column;
-	width: 21px;
-	height: 21px;
-	
-	& > button {
-		flex: 1;
-		padding: 0;
-		font-size: 5pt;
-		height: 50%;
-	}
-	`
-	},
+	flex-flow: row;`,
 	Trader: {
 		Trader: styled.div`
 		height: 100%;
 		box-sizing: border-box;
-		float: left;
-		width: 460px;`,
+		flex-basis: 475px;`,
 		Body: styled.div`padding: 4px 8px 0 8px;`,
 		Inputs: styled.table`
 		width: 100%;
@@ -858,35 +890,16 @@ const C = {
 		& td {
 			height: 30px;
 			padding: 0;
+			line-height: 125%;
 		}`,
 	},
 	Orderbook: styled.div`
 	height: 100%;
 	box-sizing: border-box;
-	display: flex;
 	min-width: 600px;
-	width: auto;
-	overflow: auto;`
+	flex: 1;
+	overflow: hidden;`
 }
-
-const CoinInput = ({ value, dispatch, step, digits = 8,
-	disabled = false }: CoinInputProps) => {
-	const handleChange = React.useCallback((values: NumberFormatValues) => {
-		console.log(values.value)
-		dispatch(new N(values.value))}, [dispatch]);
-
-return <C.CoinInput.Container>
-	<NumberFormat value={value.toFixed(digits)} onValueChange={handleChange}
-		className="coin form-field" decimalScale={digits}
-		allowLeadingZeros={false} fixedDecimalScale={true}
-		allowNegative={false} disabled={disabled} />
-	<C.CoinInput.ButtonsContainer>
-		<button onClick={() => dispatch(value.add(step))}>{UP_SYMBOL}</button>
-		<button disabled={value.minus(step).lt(0)} onClick={() =>
-			dispatch(value.sub(step))}>{DOWN_SYMBOL}</button>
-	</C.CoinInput.ButtonsContainer>
-</C.CoinInput.Container>;
-};
 
 const Trade = () => {
 	const initialState: TraderState = {
@@ -896,6 +909,7 @@ const Trade = () => {
 		quantity: new N(0),
 		fee: new N(0),
 		total: new N(0),
+		available: new N(0),
 		orderType: "limit",
 		buysell: "buy",
 		isDivisible: true,
@@ -907,14 +921,14 @@ const Trade = () => {
 
 	const [state, dispatch] = React.useReducer(reducerTrade, initialState);
 
-	return <>
+	return <C.Container>
 		<C.Trader.Trader>
 			<Trader state={state} dispatch={dispatch} />
 		</C.Trader.Trader>
 		<C.Orderbook>
 			<Orderbook state={state} dispatch={dispatch} />
 		</C.Orderbook>
-	</>;
+	</C.Container>;
 };
 
 export default Trade;

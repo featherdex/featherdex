@@ -13,30 +13,30 @@ export const defaultLayout = {
 	global: {},
 	layout: {
 		"type": "row",
-		"id": "#1",
+		"id": "parent",
 		"children": [
 			{
 				"type": "row",
-				"id": "#2",
+				"id": "body",
 				"children": [
 					{
 						"type": "row",
-						"id": "#3",
-						"weight": 62.5,
+						"id": "#1",
+						"weight": 61.5,
 						"children": [
 							{
 								"type": "row",
-								"id": "#19",
+								"id": "#10",
 								"weight": 50,
 								"children": [
 									{
 										"type": "tabset",
-										"id": "#4",
+										"id": "#100",
 										"weight": 35,
 										"children": [
 											{
 												"type": "tab",
-												"id": "#1001",
+												"id": "#1000",
 												"name": "Assets",
 												"component": "assets"
 											}
@@ -44,7 +44,7 @@ export const defaultLayout = {
 									},
 									{
 										"type": "tabset",
-										"id": "#18",
+										"id": "#101",
 										"weight": 65,
 										"children": [
 											{
@@ -77,12 +77,12 @@ export const defaultLayout = {
 							},
 							{
 								"type": "row",
-								"id": "#7",
+								"id": "#11",
 								"weight": 50,
 								"children": [
 									{
 										"type": "tabset",
-										"id": "#8",
+										"id": "#110",
 										"weight": 70,
 										"children": [
 											{
@@ -96,21 +96,21 @@ export const defaultLayout = {
 									},
 									{
 										"type": "tabset",
-										"id": "#10",
+										"id": "#111",
 										"weight": 30,
 										"children": [
 											{
 												"type": "tab",
-												"id": "#11",
+												"id": "#1110",
 												"name": "Orders",
 												"component": "orders"
 											},
 											{
 												"type": "tab",
-												"id": "#12",
+												"id": "#1111",
 												"name": "History",
 												"component": "history"
-											}
+											},
 										]
 									}
 								]
@@ -119,25 +119,31 @@ export const defaultLayout = {
 					},
 					{
 						"type": "tabset",
-						"id": "#13",
-						"weight": 30,
+						"id": "#2",
+						"weight": 31,
 						"children": [
 							{
 								"type": "tab",
-								"id": "#2010",
+								"id": "#20",
 								"name": "Trade",
 								"component": "trade"
-							}
+							},
+							{
+								"type": "tab",
+								"id": "#21",
+								"name": "Transfer Assets",
+								"component": "transfer"
+							},
 						]
 					},
 					{
 						"type": "tabset",
-						"id": "#20",
+						"id": "#3",
 						"weight": 7.5,
 						"children": [
 							{
 								"type": "tab",
-								"id": "#201",
+								"id": "#30",
 								"name": "Ticker",
 								"component": "ticker"
 							}
@@ -165,4 +171,5 @@ export const defaultSettings: Settings = {
 	numformat: US_NUMF,
 	apikey: "",
 	apisecret: "",
+	receiveAddress: null,
 };

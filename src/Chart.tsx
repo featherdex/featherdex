@@ -13,7 +13,6 @@ import {
 
 import api from './api';
 import AppContext from './contexts/AppContext';
-import useTimeCache from './timecache';
 import AssetSearch from './AssetSearch';
 
 import {
@@ -200,7 +199,7 @@ const Chart = () => {
 			setReady(false);
 
 			const API = api(getClient());
-			const { OMNI_START_TIME, COIN_MARKET } = getConstants();
+			const { COIN_MARKET } = getConstants();
 
 			let data: (BarData | WhitespaceData)[] = [];
 
@@ -378,7 +377,7 @@ const Chart = () => {
 		if (!ready) return;
 		(async function() {
 			const API = api(getClient());
-			const { GENESIS_TIME, COIN_MARKET } = getConstants();
+			const { COIN_MARKET } = getConstants();
 
 			const interval = getInterval();
 			const rawInterval = interval === "DAY_1" ? 24 * 60 * 60 :

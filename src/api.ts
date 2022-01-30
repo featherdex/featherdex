@@ -204,6 +204,10 @@ const api = (client: typeof Client) => {
 				v as CoinbaseRate);
 
 	API.getCoinBalance = (): Promise<number> => client.command("getbalance");
+	API.getAssetBalance = (address: string, asset: number): Promise<Balance> =>
+		client.command("omni_getbalance", address, asset);
+	API.getAddressAssets = (address: string): Promise<AssetBalance[]> =>
+		client.command("omni_getallbalancesforaddress", address);
 	API.getWalletAssets = (): Promise<AssetBalance[]> =>
 		client.command("omni_getwalletbalances");
 	API.getWalletAddressAssets = (): Promise<AddressBalance[]> =>
@@ -284,7 +288,7 @@ const api = (client: typeof Client) => {
 		endblock?: number): Promise<AssetTrade[]> => {
 		const txs = await API.listTransactions(startblock, endblock);
 
-		const allTXFees: { [k: string]: Decimal } = Object.assign({},
+		const allTXFees: { [k: string]: N } = Object.assign({},
 			...(await client.command(txs.map(otx =>
 			({
 				method: "gettransaction",
@@ -381,30 +385,27 @@ const api = (client: typeof Client) => {
 		client.command("omni_getnonfungibletokendata", ...optArgParse(propid, idx));
 
 	API.makeAccept = (fromaddr: string, toaddr: string, propid: number,
-		amount: Decimal): Promise<string> =>
+		amount: N): Promise<string> =>
 		client.command("omni_senddexaccept", fromaddr, toaddr, propid,
 			amount.toFixed(8));
-	API.makeOrder = (address: string, propid: number, quantity: Decimal,
-		price: Decimal, timelimit = PAY_BLOCK_LIMIT,
-		minfee = MIN_ACCEPT_FEE): Promise<string> =>
+	API.makeOrder = (address: string, propid: number, quantity: N, price: N,
+		timelimit = PAY_BLOCK_LIMIT, minfee = MIN_ACCEPT_FEE): Promise<string> =>
 		client.command("omni_sendnewdexorder", address, propid, quantity.toFixed(8),
 			quantity.mul(price).toFixed(8), timelimit, minfee.toFixed(8));
-	API.updateOrder = (address: string, propid: number, quantity: Decimal,
-		price: Decimal, timelimit = PAY_BLOCK_LIMIT,
-		minfee = MIN_ACCEPT_FEE): Promise<string> =>
+	API.updateOrder = (address: string, propid: number, quantity: N, price: N,
+		timelimit = PAY_BLOCK_LIMIT, minfee = MIN_ACCEPT_FEE): Promise<string> =>
 		client.command("omni_sendupdatedexorder", address, propid,
 			quantity.toFixed(8), quantity.mul(price).toFixed(8), timelimit,
 			minfee.toFixed(8));
 	API.cancelOrder = (address: string, propid: number): Promise<string> =>
 		client.command("omni_sendcanceldexorder", address, propid);
 
-	API.createPayloadSend = (propid: number, amount: Decimal): Promise<string> =>
+	API.createPayloadSend = (propid: number, amount: N): Promise<string> =>
 		client.command("omni_createpayload_simplesend", propid, amount.toFixed(8));
-	API.createPayloadAccept = (propid: number, amount: Decimal): Promise<string> =>
+	API.createPayloadAccept = (propid: number, amount: N): Promise<string> =>
 		client.command("omni_createpayload_dexaccept", propid, amount.toFixed(8));
-	API.createPayloadOrder = (propid: number, quantity: Decimal, price: Decimal,
-		action: number, timelimit = PAY_BLOCK_LIMIT,
-		minfee = MIN_ACCEPT_FEE): Promise<string> =>
+	API.createPayloadOrder = (propid: number, quantity: N, price: N, action: number,
+		timelimit = PAY_BLOCK_LIMIT, minfee = MIN_ACCEPT_FEE): Promise<string> =>
 		client.command("omni_createpayload_dexsell", propid, quantity.toFixed(8),
 			quantity.mul(price).toFixed(8), timelimit, minfee.toFixed(8), action);
 
@@ -421,6 +422,9 @@ const api = (client: typeof Client) => {
 		client.command("fundrawtransaction", rawtx, options);
 	API.sendRawTransaction = (signedtx: string): Promise<string> =>
 		client.command("sendrawtransaction", signedtx);
+
+	API.sendToAddress = (address: string, amount: N) =>
+		client.command("sendtoaddress", address, +amount);
 
 	API.getBittrexMktHistory = (market: string): Promise<BittrexTrade[]> =>
 		fetch(`${BITTREX_API_ENDPOINT}/markets/${market}/trades`).then(r =>
@@ -443,8 +447,8 @@ const api = (client: typeof Client) => {
 			"GET") as Promise<BittrexOrder[]>;
 
 	API.makeBittrexOrder = (apiKey: string, apiSecret: string, market: string,
-		buysell: "buy" | "sell", orderType: "market" | "limit",
-		quantity: Decimal, price?: Decimal) => {
+		buysell: "buy" | "sell", orderType: "market" | "limit", quantity: N,
+		price?: N) => {
 		let body: BittrexNewOrder = {
 			marketSymbol: market,
 			direction: buysell.toUpperCase() as ("BUY" | "SELL"),
@@ -468,6 +472,11 @@ const api = (client: typeof Client) => {
 
 	API.setLabel = (address: string, label = "") =>
 		client.command("setlabel", address, label);
+
+	API.getAddressInfo = (address: string): Promise<AddressInfo> =>
+		client.command("getaddressinfo", address);
+	API.validateAddress = (address: string): Promise<AddressValidate> =>
+		client.command("validateaddress", address);
 
 	return API;
 }

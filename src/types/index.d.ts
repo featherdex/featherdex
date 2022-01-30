@@ -91,12 +91,46 @@ declare type BittrexBook = {
 	ask: BittrexBookEntry[],
 };
 
-declare type AssetBalance = {
-	propertyid: number,
-	name: string,
-	balance: string,
-	reserved: string,
-	frozen: string,
+declare type AddressInfo = {
+	address: string,
+	scriptPubKey: string,
+	ismine: boolean,
+	iswatchonly: boolean,
+	solvable: boolean,
+	desc: string,
+	isscript: boolean,
+	ischange: boolean,
+	iswitness: boolean,
+	label: string,
+	labels: {
+		name: string,
+		purpose: "send" | "receive",
+	}[],
+	witness_version?: number,
+	witness_program?: string,
+	script?: "nonstandard" | "pubkey" | "pubkeyhash" | "scripthash" | "multisig"
+	| "nulldata" | "witness_v0_keyhash" | "witness_v0_scripthash"
+	| "witness_unknown",
+	hex?: string,
+	pubkeys?: string[],
+	sigsrequired?: number,
+	pubkey?: string,
+	embedded?: object,
+	iscompressed?: boolean,
+	timestamp?: number,
+	hdkeypath?: string,
+	hdseedid?: string,
+	hdmasterfingerprint?: string,
+};
+
+declare type AddressValidate = {
+	isvalid: boolean,
+	address?: string,
+	scriptPubkey?: string,
+	isscript?: boolean,
+	iswitness?: boolean,
+	witness_version?: number,
+	witness_program?: string,
 };
 
 declare type AssetTrade = {
@@ -410,15 +444,20 @@ declare type UTXO = {
 	safe: boolean,
 };
 
+declare type Balance = {
+	balance: string,
+	reserved: string,
+	frozen: string,
+};
+
+declare type AssetBalance = {
+	propertyid: number,
+	name: string,
+} & Balance;
+
 declare type AddressBalance = {
 	address: string,
-	balances: {
-		propertyid: number,
-		name: string,
-		balance: string,
-		reserved: string,
-		frozen: string,
-	}[],
+	balances: AssetBalance[],
 };
 
 declare type AssetInfo = {

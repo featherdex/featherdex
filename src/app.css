@@ -234,12 +234,9 @@ input.coin {
 }
 
 div.order-table {
-	flex: 0.5;
-	display: flex;
-	flex-flow: column;
+	display: table;
+	width: 100%;
 	font-size: 9pt;
-	width: 50%;
-	height: 100%;
 	box-sizing: border-box;
 }
 
@@ -250,8 +247,7 @@ div.order-table:first-child {
 div.order-table .th, div.order-table .td {
 	height: 24px;
 	line-height: 24px;
-	display: inline-block;
-	width: 25%;
+	display: table-cell;
 	box-sizing: border-box;
 	overflow: hidden;
 }
@@ -264,17 +260,19 @@ div.order-bid .td {
 	text-align: right;
 }
 
-div.order-header {
-	flex: 0 1 auto;
+div.order-ask .td ~ .td {
+	text-align: right;
 }
 
-div.order-body {
-	flex: 1 1 auto;
-	overflow: auto;
+div.order-header {
+	height: 28px;
+	display: table-row;
 }
 
 .orderbook-row-container {
 	position: relative;
+	display: table-row;
+	width: 100%;
 }
 
 .orderbook-row-container:hover {

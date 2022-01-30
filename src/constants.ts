@@ -34,6 +34,9 @@ export const EURO_SYMBOL = "\u20ac";
 export const X_SYMBOL = "\u2715";
 export const UP_SYMBOL = "\u25b2";
 export const DOWN_SYMBOL = "\u25bc";
+export const CHECK_BUTTON_SYMBOL = "\u2705";
+export const CROSS_MARK_SYMBOL = "\u274c";
+export const WARNING_SYMBOL = "\u26a0";
 
 export const PROPID_BITCOIN = 0;
 export const PROPID_COIN = 1;

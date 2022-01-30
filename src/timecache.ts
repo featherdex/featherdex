@@ -2,7 +2,7 @@ import React from 'react';
 
 import { Mutex } from 'async-mutex';
 
-import { handleError, repeatAsync } from './util';
+import { repeatAsync } from './util';
 
 const useTimeCache = <T>(requestCallback: (timeStart: number,
 	timeEnd: number) => Promise<T[]>, timeifierCallback: (t: T) => number) => {

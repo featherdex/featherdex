@@ -124,6 +124,11 @@ app.whenReady().then(() => {
 					label: "Time and Sales",
 					click: () => win.webContents.send("add:tab",
 						{ title: "Time & Sales", component: "sales" }),
+				},
+				{
+					label: "Send Assets",
+					click: () => win.webContents.send("add:tab",
+						{ title: "Send Assets", component: "send" }),
 				}]
 			},
 			{ role: 'reload' },

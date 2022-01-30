@@ -11,9 +11,8 @@ type AssetSearchProps = {
 	filter?: (v: Property) => boolean,
 }
 
-const AssetSearch = ({
-	setAssetCallback, disableCallback = _ => { }, zIndex = 1, filter
-}: AssetSearchProps) => {
+const AssetSearch = ({ setAssetCallback, disableCallback = _ => { }, zIndex = 1,
+	filter }: AssetSearchProps) => {
 	const { assetList } = React.useContext(AppContext);
 	const assets = filter ? assetList.filter(filter) : assetList;
 
@@ -22,6 +21,7 @@ const AssetSearch = ({
 		onSelect={(item: Property) =>
 			setAssetCallback(item.id)}
 		onSearch={() => disableCallback(false)}
+		onClear={() => setAssetCallback(-1)}
 		showIcon={false}
 		fuseOptions={{
 			shouldSort: true,

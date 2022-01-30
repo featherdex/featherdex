@@ -492,6 +492,16 @@ export async function estimateSellFee(consts: PlatformConstants,
 	};
 }
 
+export async function estimateSendFee(consts: PlatformConstants,
+	client: typeof Client, sendct: number) {
+	const { MIN_CHANGE } = consts;
+
+	let sendFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
+		+ TX_O_VSIZE + OPRETURN_SEND_VSIZE);
+
+	return { sendFee, totalFee: sendFee.mul(sendct).add(MIN_CHANGE).toDP(8) };
+}
+
 export async function createRawSend(consts: PlatformConstants, client: typeof Client,
 	recipient: string, propid: number, amount: Decimal, inUTXO: UTXO, fee: Decimal) {
 	const API = api(client);
@@ -561,7 +571,8 @@ export async function createRawPay(consts: PlatformConstants, client: typeof Cli
 	const { MIN_CHANGE, EXODUS_ADDRESS } = consts;
 
 	const total = dsum(orders.map(v => v.amount));
-	const change = new N(inUTXO.amount).sub(MIN_CHANGE).sub(total).sub(fee).toDP(8);
+	const change =
+		new N(inUTXO.amount).sub(MIN_CHANGE).sub(total).sub(fee).toDP(8);
 
 	if (change.lt(MIN_CHANGE))
 		throw new Error(`UTXO not large enough input=${inUTXO.amount},`
@@ -690,7 +701,7 @@ export async function getFillOrders(client: typeof Client, propid: number,
 			.plus(dsum(pendingAccepts.get(i.seller) || []).toDP(8));
 		const orderPrice = new N(i.unitprice);
 
-		if (orderPrice.gt(price)) break;
+		if (!!price && orderPrice.gt(price)) break;
 
 		if (orderAmount.gte(fillRemaining)) {
 			logger.debug("exiting loop")
@@ -715,6 +726,8 @@ export async function getFillOrders(client: typeof Client, propid: number,
 	return { fillOrders, fillRemaining };
 }
 
+// Get a list of addresses and balances that have the property, factoring in pending
+// sells, sorted in descending order
 export async function getAddressAssets(client: typeof Client, propid: number) {
 	const API = api(client);
 
@@ -757,6 +770,49 @@ export async function getAddressAssets(client: typeof Client, propid: number) {
 	return addressAssets;
 }
 
+// Accumulate-send omni tokens [a] -> [b] -> [c] -> ... -> [final]
+// Sending is performed this way in order to spend fees correctly
+export async function chainSend(consts: PlatformConstants, client: typeof Client,
+	propid: number, sends: { address: string, amount: N }[], firstUTXO: UTXO,
+	finalAddress: string, sendFee: N, waitTXs?: string[]) {
+	let utxo = firstUTXO;
+	let amount = new N(0);
+	for (let i = 0; i < sends.length; i++) {
+		const nextAddress = i === sends.length - 1 ?
+			finalAddress : sends[i + 1].address;
+		amount = amount.add(sends[i].amount);
+
+		logger.debug(`i=${i} nextAddress=${nextAddress} amount=${amount}`)
+		logger.debug("createRawSend")
+		const rawtx = await createRawSend(consts, client, nextAddress,
+			propid, amount, utxo, sendFee).catch(e => {
+				handleError(e, "error");
+				return null;
+			});
+		if (rawtx === null) return null;
+
+		const signedtx = await signTx(client, rawtx,
+			"Could not sign raw reshuffle transaction for sell");
+		if (signedtx === null) return null;
+
+		const sendtx = await sendTx(client, signedtx,
+			"Could not send raw reshuffle transaction for sell");
+		if (sendtx === null) return null;
+
+		logger.debug("push wait")
+		// Push to waiting queue, wait for all then send in order
+		if (waitTXs) waitTXs.push(sendtx);
+
+		utxo = toUTXO(sendtx, 0, nextAddress, new N(utxo.amount)
+			.sub(sendFee).toDP(8));
+
+		logger.debug("new utxo")
+		logger.debug(utxo)
+	}
+
+	return { utxo, waitTXs };
+}
+
 export function toUTXO(txid: string, vout: number, address: string, amount: Decimal):
 	UTXO {
 	return {
@@ -791,8 +847,9 @@ export async function fundTx(client: typeof Client, rawtx: string,
 		opts = { ...opts, changeAddress: address };
 	}
 
-	return handlePromise(repeatAsync(API.fundRawTransaction, 3)
-		(rawtx, opts), errmsg, v => v.hex);
+	const promise =
+		repeatAsync(API.fundRawTransaction, 3)(rawtx, opts).then(v => v.hex);
+	return errmsg === null ? promise : handlePromise(promise, errmsg);
 }
 
 export function signTx(client: typeof Client, rawtx: string,

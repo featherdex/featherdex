@@ -28,6 +28,7 @@ import Info from './Info';
 import Ticker from './Ticker';
 import Markets from './Markets';
 import Sales from './Sales';
+import AssetTransfer from './AssetTransfer';
 import { TimeCache } from './timecache';
 import Platforms from './platforms';
 import AppContext from './contexts/AppContext';
@@ -327,6 +328,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 			return panel(<Markets />);
 		else if (component === "sales")
 			return panel(<Sales />);
+		else if (component === "transfer")
+			return panel(<AssetTransfer />);
 		else if (component === "terminal")
 			return panel(<Terminal
 				color='green' backgroundColor='black' barColor='black'
