@@ -849,7 +849,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 									Low accept fees
 								</label>
 								<button onClick={setMax}>Max</button>
-								<button onClick={doTrade}>Confirm</button>
+								<button onClick={doTrade}
+									disabled={state.errmsg !== null}>Confirm</button>
 							</C.Trader.Buttons>
 						</td>
 					</tr>
