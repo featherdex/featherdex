@@ -193,9 +193,6 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		const name = target.name;
 
 		switch (name) {
-			case "confirm":
-				cDispatch("set_confirm")(v as boolean);
-				break;
 			case "nohighfees":
 				cDispatch("set_nohighfees")(v as boolean);
 				break;
