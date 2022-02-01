@@ -87,6 +87,14 @@ export function sendOpenLink(url: string) {
 	ipcRenderer.send("shell:openlink", url);
 }
 
+export function sendAlert(message: string) {
+	return ipcRenderer.sendSync("alert", message);
+}
+
+export function sendConfirm(message: string) {
+	return ipcRenderer.sendSync("confirm", message);
+}
+
 export function downloadFile(url: string, path: string,
 	callback: (status: DownloadProgress) => any): {
 		abort: () => void, promise: Promise<void>
@@ -198,7 +206,7 @@ export async function readRPCConf(file: string) {
 
 		return rpcSettings;
 	}, err => {
-		alert(err);
+		sendAlert(err);
 		return defaultRPCSettings;
 	});
 }

@@ -13,7 +13,8 @@ import api from './api';
 
 import {
 	getAddressAssets, estimateSendFee, handleError, handlePromise, repeatAsync, log,
-	estimateTxFee, chainSend, fundTx, signTx, sendTx, toUTXO, notify
+	estimateTxFee, chainSend, fundTx, signTx, sendTx, toUTXO, sendAlert, sendConfirm,
+	notify
 } from './util';
 import {
 	PROPID_BITCOIN, PROPID_COIN, SATOSHI, CHECK_BUTTON_SYMBOL, CROSS_MARK_SYMBOL,
@@ -236,18 +237,20 @@ const AssetSend = () => {
 	const doSend = () => sendMutex.runExclusive(async () => {
 		log().debug("enter doSend")
 		// run validation again because the information may not be up to date
-		let msg = await getErrmsg();
-
-		if (msg !== null) {
-			alert(msg);
-			return;
+		{
+			const msg = await getErrmsg();
+			if (msg !== null) {
+				sendAlert(msg);
+				setErrmsg(msg);
+				return;
+			}
 		}
 
 		const consts = getConstants();
 		const client = getClient();
 		const API = api(client);
 
-		const c = confirm(`Are you sure you want to send ${amount}`
+		const c = sendConfirm(`Are you sure you want to send ${amount}`
 			+ ` ${asset === PROPID_COIN ? consts.COIN_TICKER : `Asset #${asset}`}`
 			+ ` to ${address}?`);
 		if (!c) return;
@@ -279,7 +282,7 @@ const AssetSend = () => {
 		log().debug("end loop, count=${sends.length}")
 
 		if (sends.length === 0) {
-			alert(`Could not find any available asset #${asset} to send`);
+			sendAlert(`Could not find any available asset #${asset} to send`);
 			return;
 		}
 

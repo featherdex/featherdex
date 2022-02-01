@@ -14,13 +14,14 @@ import CoinInput from './CoinInput';
 
 import {
 	repeatAsync, handleError, handlePromise, getFillOrders, getAddressAssets,
-	toTradeInfo, estimateSellFee, estimateBuyFee, createRawAccept,
-	createRawPay, createRawOrder, fundTx, signTx, sendTx, toUTXO,
+	toTradeInfo, estimateSellFee, estimateBuyFee, createRawAccept, createRawPay,
+	createRawOrder, fundTx, signTx, sendTx, toUTXO, sendAlert, sendConfirm,
 	chainSend, notify, log
 } from './util';
 import {
 	SATOSHI, TRADE_FEERATE, MIN_TRADE_FEE, PROPID_BITCOIN, PROPID_COIN,
-	ACCOUNT_LABEL, BITTREX_TRADE_FEERATE, OrderAction
+	ACCOUNT_LABEL, BITTREX_TRADE_FEERATE, CROSS_MARK_SYMBOL, CHECK_BUTTON_SYMBOL,
+	OrderAction
 } from './constants';
 
 export type TraderState = {
@@ -37,12 +38,14 @@ export type TraderState = {
 	isNoHighFees: boolean,
 	bids: BookData[],
 	asks: BookData[],
-}
+	errmsg: string,
+};
 
 export type TraderAction = {
 	type: "set_price" | "set_quantity" | "set_fee" | "set_total" | "set_available"
 	| "set_divisible" | "set_confirm" | "set_nohighfees" | "set_ordertype"
-	| "set_buysell" | "set_trade" | "set_base" | "set_bids" | "set_asks",
+	| "set_buysell" | "set_trade" | "set_base" | "set_bids" | "set_asks"
+	| "set_errmsg",
 	payload?: any,
 };
 
@@ -170,6 +173,8 @@ const reducerTrade =
 				return { ...state, bids: action.payload };
 			case "set_asks":
 				return { ...state, asks: action.payload };
+			case "set_errmsg":
+				return { ...state, errmsg: action.payload };
 			default:
 				throw new Error("reducerTrade called with invalid action type "
 					+ action.type);
@@ -183,6 +188,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 	const tradeMutex = React.useMemo(() => new Mutex(), []);
 	const availMutex = React.useMemo(() => new Mutex(), []);
+	const msgMutex = React.useMemo(() => new Mutex(), []);
 
 	const cDispatch = (type: TraderAction["type"]) => (payload: any) =>
 		dispatch({ type, payload });
@@ -256,51 +262,92 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 	React.useEffect(() => { refreshAvailable(); }, [state.trade, state.buysell]);
 	useInterval(refreshAvailable, 30000);
 
+	const getErrmsg = async () => {
+		const { COIN_TICKER, MIN_CHANGE } = getConstants();
+
+		// case: unselected
+		if (state.trade === -1 || state.base === -1)
+			return "Please select assets to " + (state.trade * state.base === 1 ?
+				"trade" : (state.trade === -1 ? "buy" : "sell"));
+
+		// case: invalid asset pairs
+		if (state.trade === state.base)
+			return "Cannot trade assets of the same type";
+
+		if (state.trade > PROPID_COIN && state.base === PROPID_BITCOIN)
+			return "Cannot trade Omni assets to Bitcoin";
+
+		// case: trade value is zero
+		if (state.buysell === "buy" && state.total.eq(0)
+			|| state.buysell === "sell" && state.quantity.eq(0))
+			return "Trade value must be above zero";
+
+		// case: trade value is below dust
+		if (state.price.mul(state.quantity).lt(MIN_CHANGE))
+			return "Total trade is too small, value must be at least"
+				+ ` ${MIN_CHANGE} ${COIN_TICKER}`;
+
+		// case: Bittrex trade without API key
+		if (state.base === PROPID_BITCOIN && (settings.apikey.length === 0
+			|| settings.apisecret.length === 0))
+			return "Cannot place trade on Bittrex without API key and secret. "
+				+ "Please obtain one from your Bittrex account and input them "
+				+ "into settings.";
+
+		const API = api(getClient());
+
+		// Omni trades
+		if (state.base === PROPID_COIN) {
+			if (state.buysell === "buy") {
+				const coins = await handlePromise(repeatAsync
+					(API.getCoinBalance, 5)(), "Could not get wallet balance");
+				if (coins === null) return `Could not query ${COIN_TICKER} balance`;
+
+				// case: insufficient balance, coin
+				if (state.total.gt(new N(coins)))
+					return "Insufficient balance, have:"
+						+ ` ${coins.toFixed(8)} ${COIN_TICKER}, need:`
+						+ ` ${state.total.toFixed(8)} ${COIN_TICKER}`;
+			} else {
+				const assets = await
+					handlePromise(repeatAsync(API.getWalletAssets, 5)(),
+						"Could not get wallet assets");
+				if (assets === null) return "Could not query wallet assets";
+
+				const asset = assets.filter(v => v.propertyid === state.trade);
+
+				// case: insufficient balance, ASSET
+				if (asset.length === 0 || state.quantity.gt(new N(asset[0].balance)))
+					return "Insufficient balance, "
+						+ `have: ${parseFloat(asset[0].balance).toFixed(8)} `
+						+ `[ASSET #${state.trade}], `
+						+ `need: ${state.quantity.toFixed(8)} `
+						+ `[ASSET #${state.trade}]`;
+			}
+		}
+
+		return null;
+	};
+
+	React.useEffect(() => {
+		msgMutex.runExclusive(async () =>
+			dispatch({ type: "set_errmsg", payload: await getErrmsg() }));
+	}, [state.trade, state.buysell, state.price, state.quantity, state.total,
+		settings]);
+
 	const doTrade = () => tradeMutex.runExclusive(async () => {
 		const logger = log();
 		const consts = getConstants();
 		const { COIN_MARKET, COIN_TICKER, COIN_BASE_TICKER, MIN_CHANGE } = consts;
 
-		// case: unselected
-		if (state.trade === -1 || state.base === -1) {
-			alert("Please select assets to " +
-				(state.trade * state.base === 1 ?
-					"trade" : (state.trade === -1 ? "buy" : "sell")));
-			return;
-		}
-
-		// case: invalid asset pairs
-		if (state.trade === state.base) {
-			alert("Cannot trade assets of the same type");
-			return;
-		}
-
-		if (state.trade > PROPID_COIN && state.base === PROPID_BITCOIN) {
-			alert("Cannot trade Omni assets to Bitcoin");
-			return;
-		}
-
-		// case: trade value is zero
-		if (state.buysell === "buy" && state.total.eq(0)
-			|| state.buysell === "sell" && state.quantity.eq(0)) {
-			alert("Cannot place zero-value trade");
-			return;
-		}
-
-		// case: trade value is below dust
-		if (state.price.mul(state.quantity).lt(MIN_CHANGE)) {
-			alert("Total trade is too small, value must be at least"
-				+ ` ${MIN_CHANGE} ${COIN_TICKER}`);
-			return;
-		}
-
-		// case: Bittrex trade without API key
-		if (state.base === PROPID_BITCOIN && (settings.apikey.length === 0
-			|| settings.apisecret.length === 0)) {
-			alert("Cannot place trade on Bittrex without API key and secret. "
-				+ "Please obtain one from your Bittrex account and input them "
-				+ "into settings.");
-			return;
+		// Need to validate again
+		{
+			const msg = await getErrmsg();
+			if (msg !== null) {
+				sendAlert(msg);
+				dispatch({ type: "set_errmsg", payload: msg });
+				return;
+			}
 		}
 
 		const tradeInfo =
@@ -310,48 +357,15 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			+ ` @${state.price.toFixed(8)} `
 			+ (state.base === PROPID_COIN ? COIN_TICKER : COIN_BASE_TICKER);
 
-		const c = confirm("Are you sure you want to place this trade? "
-			+ tradeInfo);
+		const c =
+			sendConfirm(`Are you sure you want to place this trade? ${tradeInfo}`);
 		if (!c) return;
 
 		const client = getClient();
 		const API = api(client);
 
-		// Omni trade
-		if (state.base === 1) {
-			if (state.buysell === "buy") {
-				const coins = await handlePromise(repeatAsync
-					(API.getCoinBalance, 5)(), "Could not get wallet balance");
-				if (coins === null) return;
-
-				// case: insufficient balance, coin
-				if (state.total.gt(new N(coins))) {
-					handleError(new Error("Insufficient balance, "
-						+ `have: ${coins.toFixed(8)} ${COIN_TICKER}, need: `
-						+ `${state.total.toFixed(8)} ${COIN_TICKER}`), "error");
-					return;
-				}
-			} else {
-				const assets = await
-					handlePromise(repeatAsync(API.getWalletAssets, 5)(),
-						"Could not get wallet assets");
-				if (assets === null) return;
-
-				const asset = assets.filter(v => v.propertyid === state.trade);
-
-				// case: insufficient balance, ASSET
-				if (asset.length === 0
-					|| state.quantity.gt(new N(asset[0].balance))) {
-					handleError(new Error("Insufficient balance, "
-						+ `have: ${parseFloat(asset[0].balance).toFixed(8)} `
-						+ `[ASSET #${state.trade}], `
-						+ `need: ${state.quantity.toFixed(8)} `
-						+ `[ASSET #${state.trade}]`), "error");
-					return;
-				}
-			}
-		} else {
-			// place Bittrex order and hope for the best
+		// Bittrex trade, place Bittrex order and hope for the best
+		if (state.base === PROPID_BITCOIN) {
 			await API.makeBittrexOrder(settings.apikey, settings.apisecret,
 				COIN_MARKET, state.buysell, state.orderType, state.quantity,
 				state.price).then((v: BittrexOrder) => {
@@ -361,7 +375,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		}
 
 		if (state.orderType === "limit" && state.buysell === "buy")
-			alert("Warning: the current version of this app does not support "
+			sendAlert("Warning: the current version of this app does not support "
 				+ "buy side orderbook, and therefore, if they do not fill in "
 				+ "their entirety immediately, all BUY orders will have the "
 				+ "remainder of their quantity cancelled! "
@@ -421,7 +435,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 			// case: set fee is smaller than minimum
 			if (state.fee < tradeFee.totalFee) {
-				alert(`Fee too low, need at least ${tradeFee} ${COIN_TICKER}`);
+				sendAlert(`Fee too low, need at least ${tradeFee} ${COIN_TICKER}`);
 				return;
 			}
 
@@ -821,28 +835,22 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 						</td>
 					</tr>
 					<tr style={{ paddingTop: "8px" }}>
-						<td colSpan={4} style={{ textAlign: "right" }}>
-							<label style={
-								{
-									fontSize: "9pt",
-									margin: "0 10px 0 4px",
-									display: "inline-block"
-								}
-							}>
-								<input type="checkbox" name="nohighfees"
-									className="form-field"
-									checked={state.isNoHighFees}
-									onChange={handleChange} />
-								Don&apos;t pay high accept fees
-							</label>
-							<button style={{
-								display: "inline-block",
-								marginRight: "8px",
-							}} onClick={setMax}>Max</button>
-							<button style={{
-								display: "inline-block",
-								marginRight: "8px",
-							}} onClick={doTrade}>Confirm</button>
+						<td style={{ fontSize: "9pt" }} colSpan={2}>
+							{state.errmsg ? `${CROSS_MARK_SYMBOL} ${state.errmsg}`
+								: `${CHECK_BUTTON_SYMBOL} OK`}
+						</td>
+						<td colSpan={2}>
+							<C.Trader.Buttons>
+								<label style={{ flexGrow: 1 }}>
+									<input type="checkbox" name="nohighfees"
+										className="form-field"
+										checked={state.isNoHighFees}
+										onChange={handleChange} />
+									Low accept fees
+								</label>
+								<button onClick={setMax}>Max</button>
+								<button onClick={doTrade}>Confirm</button>
+							</C.Trader.Buttons>
 						</td>
 					</tr>
 				</tbody>
@@ -861,15 +869,25 @@ const C = {
 		Trader: styled.div`
 		height: 100%;
 		box-sizing: border-box;
-		flex-basis: 475px;`,
+		flex-basis: 470px;`,
 		Body: styled.div`padding: 4px 8px 0 8px;`,
 		Inputs: styled.table`
 		width: 100%;
 		margin-bottom: 8px;
 		& td {
+			box-sizing: border-box;
 			height: 30px;
 			padding: 0;
 			line-height: 125%;
+		}`,
+		Buttons: styled.div`
+		display: flex;
+		flex-flow: row;
+		align-items: center;
+		font-size: 9pt;
+		text-align: right;
+		& > * ~ * {
+			margin-left: 8px;
 		}`,
 	},
 	Orderbook: styled.div`
@@ -895,6 +913,7 @@ const Trade = () => {
 		isNoHighFees: true,
 		bids: [],
 		asks: [],
+		errmsg: null,
 	}
 
 	const [state, dispatch] = React.useReducer(reducerTrade, initialState);

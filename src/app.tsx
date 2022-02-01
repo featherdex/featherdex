@@ -38,7 +38,7 @@ import {
 	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf, writeLayout,
 	isNumber, isBoolean, parseBoolean, handlePromise, Queue, toCandle, tickersEqual,
 	propsEqual, isBarData, tradeToLineData, constants, handleError, setLogLevel, log,
-	dsum
+	dsum, sendAlert
 } from './util';
 
 import 'react-contexify/dist/ReactContexify.css';
@@ -120,7 +120,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 		api(this.client).isDaemonUp().then((v: boolean) => {
 			if (!v) {
-				alert("Could not establish connection to omnifeather daemon, "
+				sendAlert("Could not establish connection to omnifeather daemon, "
 					+ "please make sure it is running and that the coin "
 					+ "config path in this app's settings is correct");
 				this.openSettings();

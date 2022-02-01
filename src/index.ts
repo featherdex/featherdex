@@ -186,6 +186,16 @@ app.whenReady().then(() => {
 		if (app.commandLine.hasSwitch("debug"))
 			win.webContents.send("flag:loglevel", "debug");
 	});
+
+	ipcMain.on("alert", (event, message) => {
+		dialog.showMessageBoxSync(win, { message, type: "none" });
+		event.returnValue = true;
+	});
+	ipcMain.on("confirm", (event, message) => {
+		const selection = dialog.showMessageBoxSync(win,
+			{ message, type: "none", buttons: ["OK", "Cancel"] });
+		event.returnValue = selection == 0;
+	})
 });
 
 ipcMain.on("clipboard:copy", (_, text) => clipboard.writeText(text));
