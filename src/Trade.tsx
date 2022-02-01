@@ -34,7 +34,6 @@ export type TraderState = {
 	orderType: "market" | "limit",
 	buysell: "buy" | "sell",
 	isDivisible: boolean,
-	isConfirm: boolean,
 	isNoHighFees: boolean,
 	bids: BookData[],
 	asks: BookData[],
@@ -150,8 +149,6 @@ const reducerTrade =
 				return { ...state, available: action.payload };
 			case "set_divisible":
 				return { ...state, isDivisible: action.payload };
-			case "set_confirm":
-				return { ...state, isConfirm: action.payload };
 			case "set_nohighfees":
 				return { ...state, isNoHighFees: action.payload };
 			case "set_ordertype":
@@ -316,11 +313,9 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			+ ` @${state.price.toFixed(8)} `
 			+ (state.base === PROPID_COIN ? COIN_TICKER : COIN_BASE_TICKER);
 
-		if (state.isConfirm) {
-			const c = confirm("Are you sure you want to place this trade? "
-				+ tradeInfo);
-			if (!c) return;
-		}
+		const c = confirm("Are you sure you want to place this trade? "
+			+ tradeInfo);
+		if (!c) return;
 
 		const client = getClient();
 		const API = api(client);
@@ -843,19 +838,6 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 									onChange={handleChange} />
 								Don&apos;t pay high accept fees
 							</label>
-							<label style={
-								{
-									fontSize: "9pt",
-									margin: "0 10px 0 4px",
-									display: "inline-block"
-								}
-							}>
-								<input type="checkbox" name="confirm"
-									className="form-field"
-									checked={state.isConfirm}
-									onChange={handleChange} />
-								Confirm Placement
-							</label>
 							<button style={{
 								display: "inline-block",
 								marginRight: "8px",
@@ -913,7 +895,6 @@ const Trade = () => {
 		orderType: "limit",
 		buysell: "buy",
 		isDivisible: true,
-		isConfirm: true,
 		isNoHighFees: true,
 		bids: [],
 		asks: [],
