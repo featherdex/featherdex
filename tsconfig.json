@@ -15,7 +15,7 @@
 		]
 	},
 	"include": [
-		"./src"
+		"./src", "./src/components"
 	],
 	"exclude": [
 		"node_modules",

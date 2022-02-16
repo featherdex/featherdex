@@ -5,7 +5,7 @@ import N from 'decimal.js';
 
 import { NumberFormatValues } from 'react-number-format';
 
-import { UP_SYMBOL, DOWN_SYMBOL } from './constants';
+import { UP_SYMBOL, DOWN_SYMBOL } from '../constants';
 
 const C = {
 	Container: styled.div`

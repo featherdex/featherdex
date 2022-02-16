@@ -10,16 +10,16 @@ import { UTCTimestamp } from 'lightweight-charts';
 import { Menu, Item, useContextMenu, theme } from 'react-contexify';
 
 import AssetSearch from './AssetSearch';
-import AppContext from './contexts/AppContext';
+import AppContext from '../contexts/AppContext';
 import Table from './Table';
-import api from './api';
+import api from '../api';
 
 import {
 	PROPID_BITCOIN, PROPID_COIN, OMNI_EXPLORER_ENDPOINT, COIN_EXPLORER_ENDPOINT
-} from './constants';
+} from '../constants';
 import {
 	handlePromise, repeatAsync, handleError, toFormattedAmount, sendOpenLink, notify
-} from './util';
+} from '../util';
 
 type TradeColor = "green" | "red" | "none";
 

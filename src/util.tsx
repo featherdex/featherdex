@@ -12,7 +12,6 @@ import ini from 'ini';
 import fetch from 'node-fetch';
 
 import { app, BrowserWindow, ipcRenderer } from 'electron';
-import { Mutex } from 'async-mutex';
 import {
 	BarData, LineData, WhitespaceData, UTCTimestamp
 } from 'lightweight-charts';
@@ -23,11 +22,13 @@ import Order from './order';
 import Platforms from './platforms';
 
 import {
-	APP_NAME, LAYOUT_NAME, CONF_NAME, COIN_FEERATE, SATOSHI,
-	MAX_ACCEPT_FEE, EMPTY_TX_VSIZE, TX_I_VSIZE, TX_O_VSIZE, OPRETURN_ACCEPT_VSIZE,
-	OPRETURN_SEND_VSIZE, OPRETURN_ORDER_VSIZE, ACCOUNT_LABEL, OrderAction
+	APP_NAME, LAYOUT_NAME, CONF_NAME, SATOSHI, MAX_ACCEPT_FEE, ACCOUNT_LABEL
 } from './constants';
 import { defaultLayout, defaultRPCSettings, defaultSettings } from './defaults';
+import { createRawSend } from './raw';
+
+export * from './estimate';
+export * from './raw';
 
 let lastId = 0;
 const rootPath = getAppDataPath(APP_NAME);
@@ -152,8 +153,8 @@ export const repeatAsync = <T extends unknown>
 	}
 
 function makeDir(path: string) {
-	return fs.promises.mkdir(path, { recursive: true }).catch(
-		err => handleError(err, "fatal"));
+	return fs.promises.mkdir(path, { recursive: true }).catch(err =>
+		handleError(err, "fatal"));
 }
 
 export function exists(path: string, directory: boolean) {
@@ -451,181 +452,42 @@ export function propsEqual(a: PropertyList, b: PropertyList) {
 	return true;
 }
 
-export async function estimateTxFee(client: typeof Client, rawtx: string,
-	size?: number) {
-	const API = api(client);
-	const vsize = size ??
-		await repeatAsync(API.decodeTransaction, 3)(rawtx).then(v => {
-			if (!v.vsize) throw new Error("Could not decode transaction");
-			return v.vsize;
-		});
+export function getAddressType(consts: PlatformConstants, address: string):
+	"leg" | "sw" {
+	const { ADDR_LEGACY_PREFIXES, ADDR_SEGWIT_PREFIXES } = consts;
 
-	const fee = await repeatAsync(API.estimateFee, 3)().catch(_ => COIN_FEERATE);
+	if (ADDR_LEGACY_PREFIXES.test(address)) return "leg";
+	if (ADDR_SEGWIT_PREFIXES.test(address)) return "sw";
 
-	return new N(vsize).div(new N("1000")).mul(fee).toDP(8, N.ROUND_CEIL);
+	throw new Error(`Unsupported address ${address}`);
 }
 
-export async function estimateBuyFee(consts: PlatformConstants,
-	client: typeof Client, orders: FillOrder[]) {
-	const { MIN_CHANGE } = consts;
+export function getChainSends
+	(addressAssets: Awaited<ReturnType<typeof getAddressAssets>>, quantity: N) {
+	let reshuffleAddresses: FillSend[] = [];
+	let remaining = quantity;
 
-	let defaultAcceptFee = await estimateTxFee(client, "",
-		EMPTY_TX_VSIZE + TX_I_VSIZE + 2 * TX_O_VSIZE + OPRETURN_ACCEPT_VSIZE);
-	let payFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
-		+ (orders.length + 2) * TX_O_VSIZE);
+	// Collect send inputs
+	for (let i of addressAssets) {
+		logger.debug("addressAsset")
+		logger.debug(i)
+		logger.debug("remaining")
+		logger.debug(remaining)
+		if (remaining.lte(i.amount)) {
+			logger.debug("exiting loop")
+			reshuffleAddresses.push({
+				address: i.address, amount: remaining
+			});
+			break;
+		}
 
-	let acceptFees = orders.reduce((map, v) =>
-		map.set(v.address, N.max(defaultAcceptFee, v.minFee)),
-		new Map<string, Decimal>());
-
-	return {
-		acceptFees, payFee,
-		totalFee: dsum([...acceptFees.values()])
-			.add(payFee).add(MIN_CHANGE.mul(2)).toDP(8),
-	};
-}
-
-export async function estimateSellFee(consts: PlatformConstants,
-	client: typeof Client, reshufflect: number) {
-	const { MIN_CHANGE } = consts;
-
-	let sendFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
-		+ TX_O_VSIZE + OPRETURN_SEND_VSIZE);
-	let postFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
-		+ TX_O_VSIZE + OPRETURN_ORDER_VSIZE);
-
-	return {
-		sendFee, postFee,
-		totalFee: sendFee.mul(reshufflect).add(postFee).add(MIN_CHANGE).toDP(8),
-	};
-}
-
-export async function estimateSendFee(consts: PlatformConstants,
-	client: typeof Client, sendct: number) {
-	const { MIN_CHANGE } = consts;
-
-	let sendFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE + TX_I_VSIZE
-		+ TX_O_VSIZE + OPRETURN_SEND_VSIZE);
-
-	return { sendFee, totalFee: sendFee.mul(sendct).add(MIN_CHANGE).toDP(8) };
-}
-
-export async function createRawSend(consts: PlatformConstants, client: typeof Client,
-	recipient: string, propid: number, amount: Decimal, inUTXO: UTXO, fee: Decimal) {
-	const API = api(client);
-	const { MIN_CHANGE } = consts;
-
-	const payload = await repeatAsync(API.createPayloadSend, 5)
-		(propid, amount).catch(_ => {
-			throw new Error("Could not create simple send payload");
+		reshuffleAddresses.push({
+			address: i.address, amount: i.amount
 		});
+		remaining = remaining.sub(i.amount);
+	}
 
-	const change = new N(inUTXO.amount).sub(fee).toDP(8);
-
-	if (change.lt(MIN_CHANGE))
-		throw new Error("Could not create raw send transaction, fee too high");
-
-	const pretx = await repeatAsync(API.createRawTransaction, 3)
-		({
-			ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }],
-			outs: [{ [recipient]: +change }],
-		}).catch(_ => {
-			throw new Error("Could not create raw send transaction (part 1)");
-		});
-
-	const rawtx = await
-		repeatAsync(API.createRawTxOpReturn, 3)(pretx, payload).catch(_ => {
-			throw new Error("Could not create raw send transaction (part 2)");
-		});
-
-	return rawtx;
-}
-
-export async function createRawAccept(consts: PlatformConstants,
-	client: typeof Client, seller: string, propid: number, amount: Decimal,
-	inUTXO: UTXO, fee: Decimal) {
-	const API = api(client);
-	const { MIN_CHANGE } = consts;
-
-	const payload = await repeatAsync(API.createPayloadAccept, 5)
-		(propid, amount).catch(_ => {
-			throw new Error("Could not create dex accept payload");
-		});
-
-	const change = new N(inUTXO.amount).sub(MIN_CHANGE).sub(fee).toDP(8);
-
-	if (change.lt(MIN_CHANGE))
-		throw new Error("Could not create raw accept transaction, fee too high");
-
-	const pretx = await repeatAsync(API.createRawTransaction, 3)
-		({
-			ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }],
-			outs: [{ [inUTXO.address]: +change }, { [seller]: +MIN_CHANGE }],
-		}).catch(_ => {
-			throw new Error("Could not create raw accept transaction (part 1)");
-		});
-
-	const rawtx = await
-		repeatAsync(API.createRawTxOpReturn, 3)(pretx, payload).catch(_ => {
-			throw new Error("Could not create raw accept transaction (part 2)");
-		});
-
-	return rawtx;
-}
-
-export async function createRawPay(consts: PlatformConstants, client: typeof Client,
-	orders: { address: string, amount: Decimal }[], inUTXO: UTXO, fee: Decimal) {
-	const API = api(client);
-	const { MIN_CHANGE, EXODUS_ADDRESS } = consts;
-
-	const total = dsum(orders.map(v => v.amount));
-	const change =
-		new N(inUTXO.amount).sub(MIN_CHANGE).sub(total).sub(fee).toDP(8);
-
-	if (change.lt(MIN_CHANGE))
-		throw new Error(`UTXO not large enough input=${inUTXO.amount},`
-			+ ` total=${total}, fee=${fee.add(MIN_CHANGE).toDP(8)}`);
-
-	let outs: RawTxBlueprint["outs"] =
-		[{ [inUTXO.address]: +change }, { [EXODUS_ADDRESS]: +MIN_CHANGE }];
-	outs.push(...orders.map(order => ({ [order.address]: +order.amount.toDP(8) })));
-
-	const rawtx = await repeatAsync(API.createRawTransaction, 3)({
-		ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }], outs: outs
-	}).catch(_ => {
-		throw new Error("Could not create raw pay transaction");
-	});
-
-	return rawtx;
-}
-
-export async function createRawOrder(consts: PlatformConstants,
-	client: typeof Client, propid: number, action: OrderAction, inUTXO: UTXO,
-	fee = new N(0), quantity = new N(0), price = new N(0)) {
-	const API = api(client);
-	const { MIN_CHANGE } = consts;
-
-	const payload = await handlePromise(repeatAsync(API.createPayloadOrder, 5)
-		(...[propid, quantity, price, action,
-			...(action === OrderAction.ORDER_CANCEL ? [0, 0] : [])]),
-		"Could not create payload for raw order transaction");
-	if (payload === null) return;
-
-	const change = new N(inUTXO.amount).sub(fee).toDP(8);
-
-	if (change.lt(MIN_CHANGE))
-		throw new Error("Could not create raw order transaction, fee too high");
-
-	logger.debug("inUTXO")
-	logger.debug(inUTXO)
-	logger.debug(`change=${change}`)
-
-	const pretx = await repeatAsync(API.createRawTransaction, 3)({
-		ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }],
-		outs: [{ [inUTXO.address]: +change }],
-	});
-
-	return await repeatAsync(API.createRawTxOpReturn, 3)(pretx, payload);
+	return reshuffleAddresses;
 }
 
 export async function getPendingAccepts(client: typeof Client, propid?: number,
@@ -711,7 +573,7 @@ export async function getFillOrders(client: typeof Client, propid: number,
 
 		if (!!price && orderPrice.gt(price)) break;
 
-		if (orderAmount.gte(fillRemaining)) {
+		if (fillRemaining.lte(orderAmount)) {
 			logger.debug("exiting loop")
 			fillOrders.push({
 				address: i.seller,
@@ -719,6 +581,7 @@ export async function getFillOrders(client: typeof Client, propid: number,
 				payAmount: fillRemaining.mul(orderPrice).toDP(8),
 				minFee: new N(i.minimumfee),
 			});
+			fillRemaining = new N(0);
 			break;
 		}
 
@@ -781,8 +644,8 @@ export async function getAddressAssets(client: typeof Client, propid: number) {
 // Accumulate-send omni tokens [a] -> [b] -> [c] -> ... -> [final]
 // Sending is performed this way in order to spend fees correctly
 export async function chainSend(consts: PlatformConstants, client: typeof Client,
-	propid: number, sends: { address: string, amount: N }[], firstUTXO: UTXO,
-	finalAddress: string, sendFee: N, waitTXs?: string[]) {
+	propid: number, sends: FillSend[], firstUTXO: UTXO, finalAddress: string,
+	sendFee: { leg_leg: N, leg_sw: N, sw_leg: N, sw_sw: N }, waitTXs?: string[]) {
 	let utxo = firstUTXO;
 	let amount = new N(0);
 	for (let i = 0; i < sends.length; i++) {
@@ -790,10 +653,16 @@ export async function chainSend(consts: PlatformConstants, client: typeof Client
 			finalAddress : sends[i + 1].address;
 		amount = amount.add(sends[i].amount);
 
+		const fromType = getAddressType(consts, sends[i].address);
+		const toType = getAddressType(consts, nextAddress);
+
+		const fee = sendFee[`${fromType}_${toType}`];
+		if (fee === undefined) throw new Error("chainSend: logical error");
+
 		logger.debug(`i=${i} nextAddress=${nextAddress} amount=${amount}`)
 		logger.debug("createRawSend")
-		const rawtx = await createRawSend(consts, client, nextAddress,
-			propid, amount, utxo, sendFee).catch(e => {
+		const rawtx = await createRawSend(consts, client, nextAddress, propid,
+			amount, utxo, fee).catch(e => {
 				handleError(e, "error");
 				return null;
 			});
@@ -811,8 +680,7 @@ export async function chainSend(consts: PlatformConstants, client: typeof Client
 		// Push to waiting queue, wait for all then send in order
 		if (waitTXs) waitTXs.push(sendtx);
 
-		utxo = toUTXO(sendtx, 0, nextAddress, new N(utxo.amount)
-			.sub(sendFee).toDP(8));
+		utxo = toUTXO(sendtx, 0, nextAddress, new N(utxo.amount).sub(fee).toDP(8));
 
 		logger.debug("new utxo")
 		logger.debug(utxo)
@@ -836,7 +704,47 @@ export function toUTXO(txid: string, vout: number, address: string, amount: Deci
 		solvable: true,
 		desc: "", // unused
 		safe: true,
-	};;
+	};
+}
+
+// Fund an address with an amount, or fund a new address if one is not provided
+export async function fundAddress(client: typeof Client, amount: N,
+	address?: string) {
+	const API = api(client);
+
+	logger.debug("fundAddress")
+
+	let finalAddress = address;
+	if (finalAddress === undefined) {
+		const newAddress = await handlePromise(repeatAsync(API.getNewAddress, 3)
+			(ACCOUNT_LABEL), "Could not create new address for grouping");
+		if (newAddress === null) return null;
+
+		logger.debug("newAddress")
+		logger.debug(newAddress)
+
+		finalAddress = newAddress;
+	}
+
+	logger.debug("createRawTransaction")
+	const pretx = await handlePromise(repeatAsync(API.createRawTransaction, 3)
+		({ ins: [], outs: [{ [finalAddress]: amount }] }),
+		"Could not create pre-raw transaction for grouping");
+	if (pretx === null) return null;
+
+	const rawtx = await fundTx(client, pretx, { changePosition: 1 },
+		"Could not fund raw grouping transaction");
+	if (rawtx === null) return null;
+
+	const signedtx = await signTx(client, rawtx,
+		"Could not sign raw grouping transaction");
+	if (signedtx === null) return null;
+
+	const sendtx = await sendTx(client, signedtx,
+		"Could not send raw grouping transaction");
+	if (sendtx === null) return null;
+
+	return toUTXO(sendtx, 0, finalAddress, amount);
 }
 
 export async function fundTx(client: typeof Client, rawtx: string,
@@ -971,45 +879,4 @@ export async function constants(client: typeof Client) {
 		if (info.subversion.startsWith(pattern)) return Platforms[key];
 
 	throw new Error(`Unknown platform ${info.subversion}`);
-}
-
-export class Queue<T> {
-	queue = [] as T[];
-	queueMap = new Map<T, number>();
-	mutex = new Mutex();
-
-	constructor(initialData = [] as T[]) {
-		this.queue = [...initialData];
-		this.queueMap = initialData.reduce((map, v) =>
-			map.set(v, (map.get(v) || 0) + 1), new Map<T, number>());
-	}
-
-	push = (...x: T[]) => this.mutex.runExclusive(() => {
-		this.queue = [...this.queue, ...x];
-		this.queueMap = x.reduce((map, v) =>
-			map.set(v, (map.get(v) || 0) + 1), this.queueMap);
-
-		return this.queue.length;
-	});
-
-	pop = () => this.mutex.runExclusive(() => {
-		let x = this.queue.shift();
-		if (x !== undefined) {
-			if (this.queueMap.get(x) === 1) this.queueMap.delete(x);
-			else this.queueMap.set(x, this.queueMap.get(x) - 1);
-		}
-		return x;
-	});
-
-	clear = () => this.mutex.runExclusive(() => {
-		const oQueue = [...this.queue];
-		const oQueueMap = new Map(this.queueMap);
-
-		this.queue = [];
-		this.queueMap = new Map<T, number>();
-
-		return { oldQueue: oQueue, oldQueueMap: oQueueMap };
-	});
-
-	has = (x: T) => this.queueMap.has(x);
 }

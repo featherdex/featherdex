@@ -13,33 +13,36 @@ import { ipcRenderer } from 'electron';
 import { DateTime, Duration } from 'luxon';
 import { Tree } from 'functional-red-black-tree';
 import { Layout, Model, TabNode } from 'flexlayout-react';
+import { Mutex } from 'async-mutex';
 
 import api from './api';
 import Order from './order';
-import Assets from './Assets';
-import Downloads from './Download';
-import About from './About';
-import Settings from './Settings';
-import Chart from './Chart';
-import Trade from './Trade';
-import History from './History';
-import Orders from './Orders';
-import Info from './Info';
-import Ticker from './Ticker';
-import Markets from './Markets';
-import Sales from './Sales';
-import AssetTransfer from './AssetTransfer';
-import { TimeCache } from './timecache';
+import Assets from './components/Assets';
+import Downloads from './components/Download';
+import About from './components/About';
+import Settings from './components/Settings';
+import Chart from './components/Chart';
+import Trade from './components/Trade';
+import History from './components/History';
+import Orders from './components/Orders';
+import Info from './components/Info';
+import Ticker from './components/Ticker';
+import Markets from './components/Markets';
+import Sales from './components/Sales';
+import AssetTransfer from './components/AssetTransfer';
+import AssetManage from './components/AssetManage';
 import Platforms from './platforms';
 import AppContext from './contexts/AppContext';
 
+import { TimeCache } from './timecache';
 import { PROPID_BITCOIN, PROPID_COIN } from './constants';
 import {
 	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf, writeLayout,
-	isNumber, isBoolean, parseBoolean, handlePromise, Queue, toCandle, tickersEqual,
+	isNumber, isBoolean, parseBoolean, handlePromise, toCandle, tickersEqual,
 	propsEqual, isBarData, tradeToLineData, constants, handleError, setLogLevel, log,
 	dsum, sendAlert
 } from './util';
+import { Queue } from './queue';
 
 import 'react-contexify/dist/ReactContexify.css';
 import 'react-notifications-component/dist/theme.css'
@@ -77,12 +80,14 @@ export type AppMethods = {
 	getBlockTimes: () => Tree<number, number>,
 	addBlockTime: (time: number, height: number) => void,
 	refreshTrades: () => Promise<AssetTrade[]>,
+	refreshAssets: () => Promise<void>,
 };
 
 class App extends React.PureComponent<AppProps, AppState> {
-	genAsset: ReturnType<typeof setTimeout>;
-	updateTicker: ReturnType<typeof setTimeout>;
-	clearStale: ReturnType<typeof setTimeout>;
+	genAsset: ReturnType<typeof setInterval>;
+	clearStale: ReturnType<typeof setInterval>;
+	
+	updateTicker: () => ReturnType<typeof setTimeout>;
 
 	client: typeof Client;
 	consts: PlatformConstants;
@@ -94,6 +99,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 		const client = this.getClient();
 		return !!client ? api(client).listAssetTrades(s, e) : null
 	}, t => t.block);
+
+	genMutex = new Mutex();
 
 	methods: AppMethods;
 
@@ -140,6 +147,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 			getBlockTimes: this.getBlockTimes,
 			addBlockTime: this.addBlockTime,
 			refreshTrades: this.refreshTrades,
+			refreshAssets: this.genAssetList,
 		};
 
 		this.state = {
@@ -158,8 +166,12 @@ class App extends React.PureComponent<AppProps, AppState> {
 		this.updateTickers();
 
 		this.genAsset = setInterval(this.genAssetList, 60 * 1000);
-		this.updateTicker = setInterval(this.updateTickers, 2000);
 		this.clearStale = setInterval(this.clearStaleOrders, 1000);
+
+		this.updateTicker = () => {
+			this.updateTickers();
+			return setTimeout(this.updateTicker, 2500);
+		};
 	}
 
 	componentWillUnmount() {
@@ -204,6 +216,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 	updateTickers = async () => {
 		if (!this.client) return;
+		
+		log().debug("entering updateTickers")
 
 		const API = api(this.client);
 		const now = DateTime.now().toUTC();
@@ -215,8 +229,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 			(COIN_MARKET), `Could not get ${COIN_NAME} ticker data`);
 		if (tickerData === null) return;
 
-		let marketData = new Map<number, Ticker>([[1,
-			{ market: COIN_MARKET, ...tickerData }]]);
+		let marketData =
+			new Map<number, Ticker>([[1, { market: COIN_MARKET, ...tickerData }]]);
 
 		const dexsells = await handlePromise(repeatAsync(API.getExchangeSells, 3)(),
 			"Could not get open exchange orders");
@@ -226,7 +240,6 @@ class App extends React.PureComponent<AppProps, AppState> {
 			handleError(e, "error");
 			return null;
 		});
-
 		if (allTrades === null) return;
 
 		for (let asset of this.state.assetList) {
@@ -276,7 +289,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 		});
 	}
 
-	genAssetList = async () => {
+	genAssetList = () => this.genMutex.runExclusive(async () => {
 		if (!this.client) return;
 
 		const { COIN_NAME } = this.getConstants();
@@ -301,7 +314,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 		this.setState(oldState => {
 			if (!propsEqual(list, oldState.assetList)) return { assetList: list };
 		});
-	}
+	});
 
 	factory = (node: TabNode) => {
 		var component = node.getComponent();
@@ -330,6 +343,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 			return panel(<Sales />);
 		else if (component === "transfer")
 			return panel(<AssetTransfer />);
+		else if (component === "manage")
+			return panel(<AssetManage />);
 		else if (component === "terminal")
 			return panel(<Terminal
 				color='green' backgroundColor='black' barColor='black'

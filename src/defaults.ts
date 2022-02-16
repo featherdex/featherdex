@@ -134,6 +134,12 @@ export const defaultLayout = {
 								"name": "Transfer Assets",
 								"component": "transfer"
 							},
+							{
+								"type": "tab",
+								"id": "#22",
+								"name": "Manage Assets",
+								"component": "manage"
+							},
 						]
 					},
 					{

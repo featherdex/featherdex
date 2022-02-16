@@ -28,5 +28,6 @@ const AppContext =
 		getBlockTimes: null,
 		addBlockTime: null,
 		refreshTrades: null,
+		refreshAssets: null,
 	});
 export default AppContext;

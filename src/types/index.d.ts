@@ -65,12 +65,17 @@ declare type PlatformConstants = {
 	COIN_MARKET: string,
 	COIN_MARKET_ALT: string,
 	COIN_MARKET_ALT2: string,
+	MIN_FEE: Decimal,
 	FEE_ADDRESS: string,
 	EXODUS_ADDRESS: string,
 	GENESIS_TIME: number,
 	OMNI_START_HEIGHT: number,
 	OMNI_START_TIME: number,
 	MIN_CHANGE: Decimal,
+	MULTISIG_ONE_CHANGE: Decimal,
+	MULTISIG_TWO_CHANGE: Decimal,
+	ADDR_LEGACY_PREFIXES: RegExp,
+	ADDR_SEGWIT_PREFIXES: RegExp,
 };
 
 declare type Property = {
@@ -195,6 +200,11 @@ declare type FillOrder = {
 	payAmount: Decimal,
 	minFee: Decimal,
 }
+
+declare type FillSend = {
+	address: string,
+	amount: Decimal,
+};
 
 declare type RawTxBlueprint = {
 	ins: { txid: string, vout: number, sequence?: number }[],
@@ -458,6 +468,13 @@ declare type AssetBalance = {
 declare type AddressBalance = {
 	address: string,
 	balances: AssetBalance[],
+};
+
+declare type NFTRange = {
+	address: string,
+	tokenstart: number,
+	tokenend: number,
+	amount: number,
 };
 
 declare type AssetInfo = {

@@ -10,9 +10,10 @@ import { BarData, UTCTimestamp } from 'lightweight-charts';
 const Client = require('bitcoin-core');
 
 import {
-	COINBASE_API_ENDPOINT, BITTREX_API_ENDPOINT, COIN_FEERATE,
-	MIN_ACCEPT_FEE, BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_COIN
+	COINBASE_API_ENDPOINT, BITTREX_API_ENDPOINT, COIN_FEERATE, MIN_ACCEPT_FEE,
+	BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_COIN
 } from './constants';
+import { log } from './util';
 
 const api = (client: typeof Client) => {
 	function API() { };
@@ -21,6 +22,8 @@ const api = (client: typeof Client) => {
 		"check your internet connection.");
 	const CoinbaseError = new Error("Could not connect to Coinbase, " +
 		"check your internet connection.");
+	const JSONError = (text: string) =>
+		new Error(`Could not parse JSON from text ${text}`);
 
 	const optArgParse = (...args: any[]) => {
 		let pargs = [];
@@ -81,6 +84,14 @@ const api = (client: typeof Client) => {
 					return v;
 				});
 	};
+
+	const batch = async (commands: { method: string, parameters: any[] }[],
+		batchSize: number) => {
+		let batches = [];
+		for (let i = 0; i < commands.length; i += batchSize)
+			batches.push(...await client.command(commands.slice(i, i + batchSize)));
+		return batches;
+	}
 
 	API.isDaemonUp = () => client.command("uptime")
 		.then((_: any) => true, (_: Error) => false);
@@ -159,15 +170,21 @@ const api = (client: typeof Client) => {
 	API.getCoinTicker = async (market: string) => {
 		const ticker = await
 			fetch(`${BITTREX_API_ENDPOINT}/markets/${market}/ticker`)
-				.then(r => r.json(), _ => { throw BittrexError; }) as BittrexTicker;
+				.then(r => r.json().catch(async _ => {
+					throw JSONError(await r.text());
+				}), _ => { throw BittrexError; }) as BittrexTicker;
 
 		const summary = await
 			fetch(`${BITTREX_API_ENDPOINT}/markets/${market}/summary`)
-				.then(r => r.json(), _ => { throw BittrexError; }) as BittrexSummary;
+				.then(r => r.json().catch(async _ => {
+					throw JSONError(await r.text());
+				}), _ => { throw BittrexError; }) as BittrexSummary;
 
 		const trades = await
 			fetch(`${BITTREX_API_ENDPOINT}/markets/${market}/trades`)
-				.then(r => r.json(), _ => { throw BittrexError; }) as BittrexTrade[];
+				.then(r => r.json().catch(async _ => {
+					throw JSONError(await r.text());
+				}), _ => { throw BittrexError; }) as BittrexTrade[];
 
 		const lastTime = trades.length > 0 ?
 			DateTime.fromISO(trades[0].executedAt).toLocal() : null;
@@ -224,8 +241,8 @@ const api = (client: typeof Client) => {
 		client.command("listaddressgroupings");
 	API.listUnspent = (filteraddrs = [] as string[]): Promise<UTXO[]> =>
 		client.command("listunspent", 0, 9999999, filteraddrs);
-	API.getNewAddress = (label = ""): Promise<string> =>
-		client.command("getnewaddress", label, "legacy");
+	API.getNewAddress = (label = "", type = "p2sh-segwit"): Promise<string> =>
+		client.command("getnewaddress", label, type);
 	API.getExchangeSells = (): Promise<DexSell[]> =>
 		client.command("omni_getactivedexsells");
 	API.getPendingTxs = (): Promise<OmniTx[]> =>
@@ -261,14 +278,18 @@ const api = (client: typeof Client) => {
 
 	API.listAssetTrades = async (first: number, last: number):
 		Promise<AssetTrade[]> => {
+		log().debug(`listAssetTrades first=${first} last=${last}`);
+
 		const allTXids: string[] =
 			await client.command("omni_listblockstransactions", first, last);
-		const allOmniTXs: (OmniTx & BlockInfo)[] = await
-			client.command(allTXids.map(hash =>
-				({ method: "omni_gettransaction", parameters: [hash] })));
 
-		return allOmniTXs.filter(v => v.type === "DEx Purchase")
-			.flatMap(v => (v as DexPurchase & BlockInfo).purchases.filter(p =>
+		log().debug(`querying ${allTXids.length} transactions`)
+
+		const allOmniTXs: (OmniTx & BlockInfo)[] = await batch(allTXids.map(hash =>
+			({ method: "omni_gettransaction", parameters: [hash] })), 1000);
+
+		return allOmniTXs.filter(v => v.type === "DEx Purchase").flatMap(v =>
+			(v as DexPurchase & BlockInfo).purchases.filter(p =>
 				p.valid).map((p: Purchase): AssetTrade =>
 				({
 					time: v.blocktime as UTCTimestamp,
@@ -379,7 +400,7 @@ const api = (client: typeof Client) => {
 		return buys.concat(sells).sort((txa, txb) => txa.time - txb.time);
 	};
 
-	API.getNFTRanges = (propid: number) =>
+	API.getNFTRanges = (propid: number): Promise<NFTRange[]> =>
 		client.command("omni_getnonfungibletokenranges", propid);
 	API.getNFTData = (propid: number, idx?: number): Promise<NFTInfo[]> =>
 		client.command("omni_getnonfungibletokendata", ...optArgParse(propid, idx));
@@ -408,10 +429,50 @@ const api = (client: typeof Client) => {
 		timelimit = PAY_BLOCK_LIMIT, minfee = MIN_ACCEPT_FEE): Promise<string> =>
 		client.command("omni_createpayload_dexsell", propid, quantity.toFixed(8),
 			quantity.mul(price).toFixed(8), timelimit, minfee.toFixed(8), action);
+	API.createPayloadFixed = (ecosystem: number, type: number, previousid: number,
+		category: string, subcategory: string, name: string, url: string,
+		data: string, amount: N): Promise<string> =>
+		client.command("omni_createpayload_issuancefixed", ecosystem, type,
+			previousid, category, subcategory, name, url, data, amount.toFixed(8));
+	API.createPayloadManaged = (ecosystem: number, type: number, previousid: number,
+		category: string, subcategory: string, name: string, url: string,
+		data: string): Promise<string> =>
+		client.command("omni_createpayload_issuancemanaged", ecosystem, type,
+			previousid, category, subcategory, name, url, data);
+	API.createPayloadIssuer = (propid: number): Promise<string> =>
+		client.command("omni_createpayload_changeissuer", propid);
+	API.createPayloadSetNFT = (propid: number, tokenStart: number, tokenEnd: number,
+		isIssuer: boolean, data: string): Promise<string> => {
+		// TODO remove when client is fixed
+		const buf = Buffer.alloc(26 + data.length);
+		buf.writeUInt32BE(0xc9);
+		buf.writeUInt32BE(propid, 4);
+		buf.writeBigUInt64BE(BigInt(tokenStart), 8);
+		buf.writeBigUInt64BE(BigInt(tokenEnd), 16);
+		buf.writeUInt8(isIssuer ? 1 : 0, 24);
+		buf.write(data, 25);
+		
+		return new Promise((resolve, _) => resolve(buf.toString("hex")));
+
+		/* TODO enable when client is fixed
+		client.command("omni_createpayload_setnonfungibledata", propid, tokenStart,
+			tokenEnd, isIssuer, data); */
+	}
+	API.createPayloadGrant = (propid: number, amount: N, grantdata?: string) =>
+		client.command("omni_createpayload_grant", propid, amount.toFixed(8),
+			grantdata ?? "");
+	API.createPayloadRevoke = (propid: number, amount: N, memo?: string) =>
+		client.command("omni_createpayload_revoke",
+			...optArgParse(propid, amount.toFixed(8), memo));
 
 	API.createRawTxOpReturn =
 		(rawtx: string, payload: string): Promise<string> =>
 			client.command("omni_createrawtx_opreturn", rawtx, payload);
+	API.createRawTxMultisig =
+		(rawtx: string, payload: string, senderAddress: string, dustAddress: string):
+			Promise<string> =>
+			client.command("omni_createrawtx_multisig", rawtx, payload,
+				senderAddress, dustAddress);
 	API.createRawTransaction = (blueprint: RawTxBlueprint): Promise<string> =>
 		client.command("createrawtransaction", blueprint.ins, blueprint.outs);
 	API.signRawTransaction =

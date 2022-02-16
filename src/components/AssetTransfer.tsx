@@ -6,20 +6,20 @@ import useInterval from 'use-interval';
 import { Mutex } from 'async-mutex';
 import { ipcRenderer } from 'electron';
 
-import AppContext from './contexts/AppContext';
+import AppContext from '../contexts/AppContext';
 import AssetSearch from './AssetSearch';
 import CoinInput from './CoinInput'
-import api from './api';
+import api from '../api';
 
 import {
 	getAddressAssets, estimateSendFee, handleError, handlePromise, repeatAsync, log,
-	estimateTxFee, chainSend, fundTx, signTx, sendTx, toUTXO, sendAlert, sendConfirm,
-	notify
-} from './util';
+	estimateTxFee, chainSend, fundAddress, fundTx, sendAlert, sendConfirm,
+	getChainSends, notify
+} from '../util';
 import {
 	PROPID_BITCOIN, PROPID_COIN, SATOSHI, CHECK_BUTTON_SYMBOL, CROSS_MARK_SYMBOL,
 	WARNING_SYMBOL, ACCOUNT_LABEL
-} from './constants';
+} from '../constants';
 
 const C = {
 	Container: styled.div`
@@ -202,21 +202,16 @@ const AssetSend = () => {
 				return;
 			}
 
-			const assetBalances = await getAddressAssets(client, asset).catch(e => {
+			const addressAssets = await getAddressAssets(client, asset).catch(e => {
 				handleError(e, "error");
 				return null as Awaited<ReturnType<typeof getAddressAssets>>;
 			});
-			if (assetBalances === null) return;
+			if (addressAssets === null) return;
 
-			let count = 0, remaining = amount;
-			for (let i of assetBalances) {
-				if (remaining.lte(0)) break;
-				remaining = remaining.sub(i.amount);
-				count++;
-			}
+			const chainSends = getChainSends(addressAssets, amount);
 
-			const sendFee = await
-				estimateSendFee(getConstants(), client, count).catch(e => {
+			const sendFee = await estimateSendFee(getConstants(), client, chainSends,
+				address).catch(e => {
 					handleError(e, "error");
 					return null;
 				});
@@ -262,32 +257,21 @@ const AssetSend = () => {
 		}
 
 		// Run additional validation based on fees
-		const assetBalances = await getAddressAssets(client, asset).catch(e => {
+		const addressAssets = await getAddressAssets(client, asset).catch(e => {
 			handleError(e, "error");
 			return null as Awaited<ReturnType<typeof getAddressAssets>>;
 		});
-		if (assetBalances === null) return;
+		if (addressAssets === null) return;
 
-		log().debug("enter loop sends")
-		let sends: { address: string, amount: N }[] = [], remaining = amount;
-		for (let i of assetBalances) {
-			log().debug(`remaining=${remaining} i.amount=${i.amount}`)
-			if (remaining.lte(i.amount)) {
-				sends.push({ address: i.address, amount: remaining });
-				break;
-			}
-			remaining = remaining.sub(i.amount);
-			sends.push({ address: i.address, amount: i.amount });
-		}
-		log().debug("end loop, count=${sends.length}")
+		const chainSends = getChainSends(addressAssets, amount);
 
-		if (sends.length === 0) {
+		if (chainSends.length === 0) {
 			sendAlert(`Could not find any available asset #${asset} to send`);
 			return;
 		}
 
 		const sendFee = await
-			estimateSendFee(consts, client, sends.length).catch(e => {
+			estimateSendFee(consts, client, chainSends, address).catch(e => {
 				handleError(e, "error");
 				return null as Awaited<ReturnType<typeof estimateSendFee>>;
 			});
@@ -297,51 +281,17 @@ const AssetSend = () => {
 		log().debug(sendFee)
 
 		// Fund fees transaction
-		let utxo;
-		{
-			log().debug("enter fund fees")
-			const blueprint: RawTxBlueprint =
-				{ ins: [], outs: [{ [sends[0].address]: +sendFee.totalFee }] };
+		let utxo = await
+			fundAddress(client, sendFee.totalFee, chainSends[0].address);
+		if (utxo === null) return;
 
-			const pretx = await
-				handlePromise(repeatAsync(API.createRawTransaction, 5)(blueprint),
-					"Could not create raw fund fees transaction (simple send)");
-			if (pretx === null) return;
-
-			log().debug("pretx")
-			log().debug(pretx)
-
-			const rawtx = await fundTx(client, pretx, { changePosition: 1 },
-				"Could not fund raw transaction for fund fees (simple send)");
-			if (rawtx === null) return;
-
-			log().debug("rawtx")
-			log().debug(rawtx)
-
-			const signedtx = await signTx(client, rawtx,
-				"Could not sign raw transaction for fund fees (simple send)");
-			if (signedtx === null) return;
-
-			log().debug("signedtx")
-			log().debug(signedtx)
-
-			const sendtx = await sendTx(client, signedtx,
-				"Could not send raw transaction for fund fees (simple send)");
-			if (sendtx === null) return;
-
-			log().debug("sendtx")
-			log().debug(sendtx)
-
-			utxo = toUTXO(sendtx, 0, sends[0].address, sendFee.totalFee);
-
-			log().debug("utxo")
-			log().debug(utxo)
-		}
+		log().debug("utxo")
+		log().debug(utxo)
 
 		// Chain send
 		{
-			const chain = await chainSend(consts, client, asset,
-				sends, utxo, address, sendFee.sendFee);
+			const chain = await chainSend(consts, client, asset, chainSends, utxo,
+				address, sendFee.sendFee);
 			if (chain === null) return;
 
 			utxo = chain.utxo;

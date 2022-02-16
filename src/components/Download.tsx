@@ -5,10 +5,10 @@ import styled from 'styled-components';
 import { ipcRenderer } from 'electron';
 import { Line } from 'rc-progress';
 
-import AppContext from './contexts/AppContext';
+import AppContext from '../contexts/AppContext';
 
-import { downloadFile, uniqueId, promiseStatus } from './util';
-import { X_SYMBOL } from './constants';
+import { downloadFile, uniqueId, promiseStatus } from '../util';
+import { X_SYMBOL } from '../constants';
 
 type DownloadInfoProps = {
 	id: string,

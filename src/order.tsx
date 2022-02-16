@@ -5,7 +5,7 @@ import N from 'decimal.js';
 import { DateTime } from 'luxon';
 import { UTCTimestamp } from 'lightweight-charts';
 
-import { Data } from './Orders';
+import { Data } from './components/Orders';
 import { sendTx, waitForTx } from './util';
 
 export default class Order implements Cancellable {

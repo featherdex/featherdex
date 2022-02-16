@@ -5,10 +5,10 @@ import React from 'react';
 import { DateTime } from 'luxon';
 import { Column } from 'react-table';
 
-import AppContext from './contexts/AppContext';
+import AppContext from '../contexts/AppContext';
 import Table from './Table';
 
-import { toFormattedAmount } from './util';
+import { toFormattedAmount } from '../util';
 
 const Markets = () => {
 	const { settings, tickers } = React.useContext(AppContext);

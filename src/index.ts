@@ -126,10 +126,11 @@ app.whenReady().then(() => {
 						{ title: "Time & Sales", component: "sales" }),
 				},
 				{
-					label: "Send Assets",
+					label: "Transfer Assets",
 					click: () => win.webContents.send("add:tab",
-						{ title: "Send Assets", component: "send" }),
-				}]
+						{ title: "Transfer Assets", component: "send" }),
+				},
+				]
 			},
 			{ role: 'reload' },
 			{ role: 'toggleDevTools' },
