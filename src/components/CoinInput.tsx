@@ -5,7 +5,7 @@ import N from 'decimal.js';
 
 import { NumberFormatValues } from 'react-number-format';
 
-import { UP_SYMBOL, DOWN_SYMBOL } from '../constants';
+import { SYMBOL_UP, SYMBOL_DOWN } from '../constants';
 
 const C = {
 	Container: styled.div`
@@ -35,8 +35,8 @@ type CoinInputProps = {
 	disabled?: boolean,
 };
 
-const CoinInput = ({ value, dispatch, step, digits = 8,
-	disabled = false }: CoinInputProps) => {
+const CoinInput = ({ value, dispatch, step, digits = 8, disabled = false }:
+	CoinInputProps) => {
 	const handleChange = React.useCallback((values: NumberFormatValues) =>
 		dispatch(new N(values.value)), [dispatch]);
 
@@ -46,9 +46,9 @@ const CoinInput = ({ value, dispatch, step, digits = 8,
 			allowLeadingZeros={false} fixedDecimalScale={true}
 			allowNegative={false} disabled={disabled} />
 		<C.ButtonsContainer>
-			<button onClick={() => dispatch(value.add(step))}>{UP_SYMBOL}</button>
+			<button onClick={() => dispatch(value.add(step))}>{SYMBOL_UP}</button>
 			<button disabled={value.minus(step).lt(0)} onClick={() =>
-				dispatch(value.sub(step))}>{DOWN_SYMBOL}</button>
+				dispatch(value.sub(step))}>{SYMBOL_DOWN}</button>
 		</C.ButtonsContainer>
 	</C.Container>;
 };

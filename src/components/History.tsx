@@ -15,9 +15,7 @@ import useTimeCache from '../timecache';
 import Table from './Table';
 import api from '../api';
 
-import {
-	PROPID_BITCOIN, PROPID_COIN, OMNI_EXPLORER_ENDPOINT, COIN_EXPLORER_ENDPOINT
-} from '../constants';
+import { PROPID_BITCOIN, PROPID_COIN } from '../constants';
 import {
 	handlePromise, repeatAsync, handleError, toFormattedAmount, sendOpenLink, notify
 } from '../util';
@@ -34,15 +32,14 @@ type Data = {
 };
 
 const History = () => {
-	const { settings, getClient, getConstants } = React.useContext(AppContext);
+	const { consts, settings, getClient } = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
 
 	const { show } = useContextMenu();
 
 	const myTradesCache = useTimeCache((ts, te) => {
 		const client = getClient();
-		return !!client ?
-			api(client).listMyAssetTrades(getConstants().COIN_NAME, ts, te) : null;
+		return !!client ? api(client).listMyAssetTrades(ts, te) : null;
 	}, t => t.block);
 
 	const onContextMenu = (event: React.MouseEvent) => {
@@ -70,7 +67,10 @@ const History = () => {
 
 				if (!v.txid) return <span>{time}</span>;
 				else {
-					const { COIN_OMNI_NAME, COIN_NAME } = getConstants();
+					const {
+						COIN_OMNI_NAME = "Omni", COIN_NAME = "Coin",
+						OMNI_EXPLORER_ENDPOINT = "", COIN_EXPLORER_ENDPOINT = ""
+					} = (consts ?? {});
 
 					const onOmni = () =>
 						sendOpenLink(`${OMNI_EXPLORER_ENDPOINT}/tx/${v.txid}`);
@@ -114,7 +114,7 @@ const History = () => {
 			width: 80,
 			Cell: props => props.value === PROPID_BITCOIN ? <i>BTC</i> :
 				(props.value === PROPID_COIN ?
-					<i>{getConstants().COIN_TICKER}</i> : <b>{props.value}</b>),
+					<i>{consts?.COIN_TICKER ?? "-"}</i> : <b>{props.value}</b>),
 		},
 		{
 			Header: 'Asset Sell ID',
@@ -122,7 +122,7 @@ const History = () => {
 			width: 80,
 			Cell: props => props.value === PROPID_BITCOIN ? <i>BTC</i> :
 				(props.value === PROPID_COIN ?
-					<i>{getConstants().COIN_TICKER}</i> : <b>{props.value}</b>),
+					<i>{consts?.COIN_TICKER ?? "-"}</i> : <b>{props.value}</b>),
 		},
 		{
 			Header: 'Quantity',
@@ -152,13 +152,14 @@ const History = () => {
 			Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
 				"decimal", "none"),
 		},
-	] : [],
-		[settings]
-	);
+	] : [], [consts, settings]);
 
 	const refreshData = async () => {
-		const API = api(getClient());
-		const { OMNI_START_HEIGHT, COIN_MARKET } = getConstants();
+		const client = getClient();
+		if (client === null || consts === null) return;
+
+		const API = api(client);
+		const { OMNI_START_HEIGHT, COIN_MARKET } = consts;
 
 		const blockHeight = await
 			handlePromise(repeatAsync(API.getBlockchainInfo, 5)(),

@@ -11,7 +11,7 @@ const Client = require('bitcoin-core');
 
 import {
 	COINBASE_API_ENDPOINT, BITTREX_API_ENDPOINT, COIN_FEERATE, MIN_ACCEPT_FEE,
-	BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_COIN
+	BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_COIN, TYPE_ACCEPT_OFFER, TYPE_SELL_OFFER
 } from './constants';
 import { log } from './util';
 
@@ -251,13 +251,13 @@ const api = (client: typeof Client) => {
 		async (propid?: number, pendingTxs?: OmniTx[]):
 			Promise<DexAccept[]> =>
 			(pendingTxs || await API.getPendingTxs()).filter(v =>
-				v.type === "DEx Accept Offer"
+				v.type_int === TYPE_ACCEPT_OFFER
 				&& (propid !== undefined ?
 					(v as DexAccept).propertyid === propid : true)) as DexAccept[];
 	API.getPendingCancels = async (propid: number, pendingTxs?: OmniTx[]):
 		Promise<DexOrder[]> =>
 		(pendingTxs || await API.getPendingTxs()).filter(v =>
-			v.type === "DEx Sell Offer" && (v as DexOrder).action === "cancel"
+			v.type_int === TYPE_SELL_OFFER && (v as DexOrder).action === "cancel"
 			&& (v as DexOrder).propertyid === propid) as DexOrder[];
 	API.getPayload =
 		(txid: string): Promise<{ payload: string, payloadsize: number }> =>
@@ -276,12 +276,12 @@ const api = (client: typeof Client) => {
 		return totalIn - totalOut;
 	};
 
-	API.listAssetTrades = async (first: number, last: number):
+	API.listAssetTrades = async (startblock: number, endblock: number):
 		Promise<AssetTrade[]> => {
-		log().debug(`listAssetTrades first=${first} last=${last}`);
+		log().debug(`listAssetTrades startblock=${startblock} endblock=${endblock}`);
 
-		const allTXids: string[] =
-			await client.command("omni_listblockstransactions", first, last);
+		const allTXids: string[] = await
+			client.command("omni_listblockstransactions", startblock, endblock);
 
 		log().debug(`querying ${allTXids.length} transactions`)
 
@@ -305,8 +305,8 @@ const api = (client: typeof Client) => {
 				}))).sort((a, b) => a.time - b.time);
 	};
 
-	API.listMyAssetTrades = async (coinName: string, startblock?: number,
-		endblock?: number): Promise<AssetTrade[]> => {
+	API.listMyAssetTrades = async (startblock?: number, endblock?: number):
+		Promise<AssetTrade[]> => {
 		const txs = await API.listTransactions(startblock, endblock);
 
 		const allTXFees: { [k: string]: N } = Object.assign({},
@@ -320,7 +320,7 @@ const api = (client: typeof Client) => {
 			v.type === "DEx Purchase"
 			&& allTXFees[v.txid] !== undefined) as (DexPurchase & BlockInfo)[];
 		const sellTXs = txs.filter(v =>
-			v.type === "DEx Sell Offer" && v.valid) as (DexOrder & BlockInfo)[];
+			v.type_int === TYPE_SELL_OFFER && v.valid) as (DexOrder & BlockInfo)[];
 		const dexsells: Record<string, DexSell> = Object.assign({},
 			...(await API.getExchangeSells()).map(s => ({ [s.txid]: s })));
 
@@ -382,7 +382,10 @@ const api = (client: typeof Client) => {
 					amount: remaining.mul(new N(dexsell.unitprice)).toDP(8),
 					fee: allTXFees[tx.txid],
 				});
-			} else
+			} else {
+				const amount = new N(Object.entries(tx).filter(([k, _]) =>
+					k.endsWith("desired"))[0][1] as string ?? 0);
+
 				sells.push({
 					time: tx.blocktime as UTCTimestamp,
 					txid: tx.txid,
@@ -392,9 +395,10 @@ const api = (client: typeof Client) => {
 					idSell: tx.propertyid,
 					quantity: new N(tx.amount),
 					remaining: new N(0),
-					amount: new N(tx[`${coinName.toLowerCase()}desired`]),
+					amount: amount,
 					fee: allTXFees[tx.txid],
 				});
+			}
 		}
 
 		return buys.concat(sells).sort((txa, txb) => txa.time - txb.time);
@@ -451,7 +455,7 @@ const api = (client: typeof Client) => {
 		buf.writeBigUInt64BE(BigInt(tokenEnd), 16);
 		buf.writeUInt8(isIssuer ? 1 : 0, 24);
 		buf.write(data, 25);
-		
+
 		return new Promise((resolve, _) => resolve(buf.toString("hex")));
 
 		/* TODO enable when client is fixed

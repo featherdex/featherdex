@@ -27,9 +27,7 @@ type Data = {
 };
 
 const Assets = () => {
-	const {
-		settings, getClient, getConstants, tickers
-	} = React.useContext(AppContext);
+	const { consts, settings, getClient, tickers } = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
 
 	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
@@ -100,20 +98,21 @@ const Assets = () => {
 			Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
 				"decimal", "none"),
 		},
-	] : [],
-		[settings]
-	);
+	] : [], [settings]);
 
 	const refreshData = async () => {
 		if (!tickers || !tickers.get(PROPID_COIN)) return;
+
+		const client = getClient();
+		if (client === null || consts === null) return;
+
+		const API = api(client);
+		const { COIN_TICKER, COIN_NAME } = consts;
 
 		const emptyTickerData = {
 			last: { time: null as DateTime, price: 0 },
 			chg: 0, chgp: 0, bid: 0, ask: 0, vol: 0
 		};
-
-		const API = api(getClient());
-		const { COIN_TICKER, COIN_NAME } = getConstants();
 
 		const tickerData = tickers.get(PROPID_COIN);
 		let assetData: Data[] = [];

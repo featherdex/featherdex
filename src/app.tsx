@@ -31,7 +31,6 @@ import Markets from './components/Markets';
 import Sales from './components/Sales';
 import AssetTransfer from './components/AssetTransfer';
 import AssetManage from './components/AssetManage';
-import Platforms from './platforms';
 import AppContext from './contexts/AppContext';
 
 import { TimeCache } from './timecache';
@@ -58,6 +57,7 @@ type AppProps = {
 export type AppState = {
 	layoutRef: React.RefObject<Layout>,
 	layout: Model,
+	consts: PlatformConstants,
 	settings: Settings,
 	tickers: Map<number, Ticker>,
 	assetList: PropertyList,
@@ -69,7 +69,6 @@ export type AppState = {
 
 export type AppMethods = {
 	getClient: () => typeof Client,
-	getConstants: () => PlatformConstants,
 	setSettings: (s: Record<string, any>) => void,
 	saveSettings: () => void,
 	addPendingDownload: Queue<DownloadOpts>["push"],
@@ -86,11 +85,11 @@ export type AppMethods = {
 class App extends React.PureComponent<AppProps, AppState> {
 	genAsset: ReturnType<typeof setInterval>;
 	clearStale: ReturnType<typeof setInterval>;
-	
+
 	updateTicker: () => ReturnType<typeof setTimeout>;
 
-	client: typeof Client;
-	consts: PlatformConstants;
+	alive = false;
+	client: typeof Client = null;
 	pendingDownloads = new Queue<DownloadOpts>();
 	pendingOrders: Order[] = [];
 	blockTimes = createRBTree<number, number>();
@@ -116,27 +115,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 			password: iRPCSettings.rpcpassword,
 		});
 
-		this.consts = Platforms.FEATHERCOIN;
-
-		const logger = log();
-
-		logger.debug(`host=${iRPCSettings.rpchost}`);
-		logger.debug(`port=${iRPCSettings.rpcport}`);
-		logger.debug(`username=${iRPCSettings.rpcuser}`);
-		logger.debug(`password=${iRPCSettings.rpcpassword}`);
-
-		api(this.client).isDaemonUp().then((v: boolean) => {
-			if (!v) {
-				sendAlert("Could not establish connection to omnifeather daemon, "
-					+ "please make sure it is running and that the coin "
-					+ "config path in this app's settings is correct");
-				this.openSettings();
-			} else constants(this.client).then(c => this.consts = c);
-		});
-
 		this.methods = {
 			getClient: this.getClient,
-			getConstants: this.getConstants,
 			setSettings: this.setSettings,
 			saveSettings: this.saveSettings,
 			addPendingDownload: this.addPendingDownload,
@@ -153,6 +133,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 		this.state = {
 			layoutRef: React.createRef(),
 			layout: this.props.model,
+			consts: null,
 			settings: this.props.initSettings,
 			tickers: new Map<number, Ticker>(),
 			assetList: [],
@@ -162,25 +143,46 @@ class App extends React.PureComponent<AppProps, AppState> {
 			aOpen: false,
 		};
 
-		this.genAssetList();
-		this.updateTickers();
-
 		this.genAsset = setInterval(this.genAssetList, 60 * 1000);
 		this.clearStale = setInterval(this.clearStaleOrders, 1000);
 
 		this.updateTicker = () => {
 			this.updateTickers();
-			return setTimeout(this.updateTicker, 2500);
+			if (this.alive) return setTimeout(this.updateTicker, 2500);
 		};
+	}
+
+	componentDidMount() {
+		this.alive = true;
+		this.updateTicker();
+
+		(async () => {
+			const up = await api(this.client).isDaemonUp();
+
+			if (!up) {
+				sendAlert("Could not establish connection to omnifeather daemon, "
+					+ "please make sure it is running and that the coin "
+					+ "config path in this app's settings is correct");
+				this.openSettings();
+				return;
+			}
+			const consts = await constants(this.client).catch(e => {
+				handleError(e, "error");
+				return null;
+			});
+			if (consts === null) return;
+
+			this.setState({ consts }, () => { this.genAssetList(); });
+		})();
 	}
 
 	componentWillUnmount() {
 		clearInterval(this.genAsset);
+		clearInterval(this.clearStale);
+		this.alive = false;
 	}
 
 	getClient = () => this.client;
-
-	getConstants = () => this.consts;
 
 	getBlockTimes = () => this.blockTimes;
 	addBlockTime = (time: number, height: number) =>
@@ -208,22 +210,25 @@ class App extends React.PureComponent<AppProps, AppState> {
 	}
 
 	refreshTrades = async () => {
-		const { OMNI_START_HEIGHT } = this.getConstants();
+		const consts = this.state.consts;
+		if (consts === null) return [];
+
+		const { OMNI_START_HEIGHT } = consts;
 		const height = (await api(this.client).getBlockchainInfo()).blocks;
 
 		return this.tradesCache.refresh(OMNI_START_HEIGHT, height);
 	}
 
 	updateTickers = async () => {
-		if (!this.client) return;
-		
+		if (this.client === null || this.state.consts === null) return;
+
 		log().debug("entering updateTickers")
 
 		const API = api(this.client);
 		const now = DateTime.now().toUTC();
 		const yesterday = now.minus({ days: 1 }).startOf("day");
 
-		const { COIN_NAME, COIN_MARKET } = this.getConstants();
+		const { COIN_NAME, COIN_MARKET } = this.state.consts;
 
 		let tickerData = await handlePromise(repeatAsync(API.getCoinTicker, 5)
 			(COIN_MARKET), `Could not get ${COIN_NAME} ticker data`);
@@ -290,9 +295,9 @@ class App extends React.PureComponent<AppProps, AppState> {
 	}
 
 	genAssetList = () => this.genMutex.runExclusive(async () => {
-		if (!this.client) return;
+		if (this.client === null || this.state.consts === null) return;
 
-		const { COIN_NAME } = this.getConstants();
+		const { COIN_NAME } = this.state.consts;
 
 		let proplist = [{
 			id: PROPID_BITCOIN,
@@ -379,7 +384,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 							print(JSON.stringify(r, null, 2)),
 							(err: Error) => print(err.message));
 				}}
-				msg={`Enter ${this.consts.COIN_OMNI_NAME} command...`}
+				msg={`Enter ${this.state.consts?.COIN_OMNI_NAME ?? "a"} command...`}
 				commands={{
 					"help": (cmd: any, print: (k: any) => void) => {
 						const cmdarr = cmd as string[];
@@ -389,8 +394,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 								(err: Error) => print(err.message));
 					}
 				}}
-				startState="maximised"
-			/>);
+				startState="maximised" />);
 		else if (component === "trade")
 			return panel(<Trade />,
 				{ minWidth: "935px", overflow: "auto" });
@@ -424,7 +428,12 @@ class App extends React.PureComponent<AppProps, AppState> {
 				}));
 		if (clientSettings !== null) {
 			this.client = new Client(clientSettings);
-			constants(this.client).then(c => this.consts = c);
+			const consts = await constants(this.client).catch(e => {
+				handleError(e, "error");
+				return null;
+			});
+			if (consts !== null)
+				this.setState({ consts }, () => { this.genAssetList(); });
 		}
 		writeSettings(this.state.settings);
 	};
@@ -437,8 +446,7 @@ class App extends React.PureComponent<AppProps, AppState> {
 			<Layout ref={this.state.layoutRef}
 				model={this.state.layout}
 				factory={this.factory} />
-			<Settings constants={this.consts}
-				isOpen={this.state.sOpen}
+			<Settings isOpen={this.state.sOpen}
 				closeModalCallback={this.closeSettings} />
 			<About isOpen={this.state.aOpen}
 				closeModalCallback={this.closeAbout} />

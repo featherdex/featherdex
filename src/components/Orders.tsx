@@ -16,14 +16,13 @@ import useTimeCache from '../timecache';
 import api from '../api';
 
 import {
-	PROPID_BITCOIN, PROPID_COIN, OMNI_EXPLORER_ENDPOINT, COIN_EXPLORER_ENDPOINT,
-	EMPTY_TX_VSIZE, IN_P2PKH_VSIZE, IN_P2WSH_VSIZE, OUT_P2PKH_VSIZE, OUT_P2WSH_VSIZE,
-	OPRET_ORDER_VSIZE, OrderAction
+	PROPID_BITCOIN, PROPID_COIN, EMPTY_TX_VSIZE, IN_P2PKH_VSIZE, IN_P2WSH_VSIZE,
+	OUT_P2PKH_VSIZE, OUT_P2WSH_VSIZE, OPRET_ORDER_VSIZE, TYPE_SELL_OFFER, OrderAction
 } from '../constants';
 import {
 	handleError, handlePromise, repeatAsync, waitForTx, createRawOrder,
 	estimateTxFee, fundAddress, signTx, sendTx, toFormattedAmount, toTradeInfo,
-	getAddressType, notify, sendOpenLink, log
+	getAddressType, notify, sendAlert, sendOpenLink, log
 } from '../util';
 import { Queue } from '../queue';
 
@@ -42,7 +41,7 @@ export type Data = {
 
 const Orders = () => {
 	const {
-		settings, getClient, getConstants, getPendingOrders
+		consts, settings, getClient, getPendingOrders
 	} = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
 	const [active, setActive] = React.useState<string[]>([]);
@@ -52,8 +51,7 @@ const Orders = () => {
 
 	const myTradesCache = useTimeCache((ts, te) => {
 		const client = getClient();
-		return !!client ?
-			api(client).listMyAssetTrades(getConstants().COIN_NAME, ts, te) : null
+		return !!client ? api(client).listMyAssetTrades(ts, te) : null
 	}, t => t.block);
 
 	const onContextMenu = (event: React.MouseEvent<HTMLSpanElement, MouseEvent>) => {
@@ -62,7 +60,7 @@ const Orders = () => {
 	}
 
 	const columns: Column<Record<string, any>>[] = React.useMemo(() => {
-		const { COIN_OMNI_NAME, COIN_NAME, COIN_TICKER } = getConstants();
+		const { COIN_TICKER = "-" } = (consts ?? {});
 		return settings ? [
 			{
 				Header: '',
@@ -88,6 +86,11 @@ const Orders = () => {
 
 					if (!v.txid) return <span>{time}</span>;
 					else {
+						const {
+							COIN_OMNI_NAME = "Omni", COIN_NAME = "Coin",
+							OMNI_EXPLORER_ENDPOINT = "", COIN_EXPLORER_ENDPOINT = ""
+						} = (consts ?? {});
+
 						const onOmni = () =>
 							sendOpenLink(`${OMNI_EXPLORER_ENDPOINT}/tx/${v.txid}`);
 						const onFeather = () =>
@@ -176,15 +179,17 @@ const Orders = () => {
 					"decimal", "none"),
 			},
 		] : []
-	},
-		[settings]
-	);
+	}, [consts, settings]);
 
 	const sendCancel = async (trade: AssetTrade) => {
 		const logger = log();
+
 		const client = getClient();
-		const API = api(client);
-		const consts = getConstants();
+		if (client === null || consts === null) {
+			sendAlert("Client not initialized");
+			return;
+		}
+
 		const { MIN_CHANGE } = consts;
 
 		let cancelSize = EMPTY_TX_VSIZE.add(OPRET_ORDER_VSIZE);
@@ -233,8 +238,11 @@ const Orders = () => {
 	}
 
 	const refreshData = async () => {
-		const API = api(getClient());
-		const { OMNI_START_HEIGHT, COIN_MARKET } = getConstants();
+		const client = getClient();
+		if (client === null || consts === null) return;
+
+		const API = api(client);
+		const { OMNI_START_HEIGHT, COIN_MARKET } = consts;
 
 		const blockHeight = await
 			handlePromise(repeatAsync(API.getBlockchainInfo, 5)(),
@@ -247,7 +255,7 @@ const Orders = () => {
 
 		const pendingCancels: Record<string, boolean> =
 			Object.assign({}, ...pendingTxs.filter(v =>
-				v.type === "DEx Sell Offer"
+				v.type_int === TYPE_SELL_OFFER
 				&& (v as DexOrder).action === "cancel").map(v =>
 					({ [v.sendingaddress]: true })));
 
@@ -256,7 +264,7 @@ const Orders = () => {
 				cancel: v.finalizing ? <></> : <a href="#" onClick={() => {
 					v.cancel();
 					notify("success", "Canceled pending order",
-						`Canceled order ${toTradeInfo(getConstants(), v)}`);
+						`Canceled order ${toTradeInfo(consts, v)}`);
 				}}>Cancel</a>,
 				time: { time: v.time },
 				status: v.status,
@@ -303,10 +311,10 @@ const Orders = () => {
 					cancel: <a href="#" onClick={() =>
 						handlePromise(repeatAsync(API.cancelBittrexOrder, 3)
 							(settings.apikey, settings.apisecret, v.id)
-							.then(v => notify("success",
-								"Cancelled order", toTradeInfo(getConstants(), v))),
+							.then(o => notify("success", "Cancelled order",
+								toTradeInfo(consts, o))),
 							"Failed to cancel Bittrex order "
-							+ toTradeInfo(getConstants(), v))
+							+ toTradeInfo(consts, v))
 					}>Cancel</a>,
 					time: {
 						time: Math.floor(DateTime.fromISO(v.createdAt)

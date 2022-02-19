@@ -13,7 +13,6 @@ import { US_NUMF, EU_NUMF, IN_NUMF, FR_NUMF } from '../constants';
 import '../app.css';
 
 type SettingsProps = {
-	constants: PlatformConstants,
 	isOpen: boolean,
 	closeModalCallback: () => void,
 };
@@ -35,22 +34,22 @@ const C = {
 };
 
 export default function Settings
-	({ constants, isOpen, closeModalCallback }: SettingsProps) {
-	const { settings, setSettings, saveSettings } = React.useContext(AppContext);
+	({ isOpen, closeModalCallback }: SettingsProps) {
+	const {
+		consts, settings, setSettings, saveSettings
+	} = React.useContext(AppContext);
 
 	const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const target = event.target;
-		var value = target.type === "checkbox" || target.type === "radio" ?
+		let value = target.type === "checkbox" || target.type === "radio" ?
 			target.checked : target.value;
-		var name = target.name;
+		let name = target.name;
 
 		if (name.startsWith("numformat-"))
 			[name, value] = ["numformat",
-				name === "numformat-us" ?
-					US_NUMF :
-					(name === "numformat-eu" ?
-						EU_NUMF :
-						(name === "numformat-in" ? IN_NUMF : FR_NUMF))];
+				name === "numformat-us" ? US_NUMF
+					: (name === "numformat-eu" ? EU_NUMF
+						: (name === "numformat-in" ? IN_NUMF : FR_NUMF))];
 
 		setSettings({ [name]: value });
 	}
@@ -59,6 +58,8 @@ export default function Settings
 		if (!data.canceled && data.filePaths.length === 1)
 			setSettings({ dconfpath: data.filePaths[0] });
 	});
+
+	const { COIN_NAME = "Coin", COIN_OMNI_NAME = "Omni" } = (consts ?? {});
 
 	return <div>
 		<Modal isOpen={isOpen}
@@ -78,17 +79,18 @@ export default function Settings
 			<Container>
 				<h2>Settings</h2>
 				<Body>
-					<h3>{constants.COIN_OMNI_NAME} application</h3>
-					<label>{constants.COIN_NAME} config location:&nbsp;
+					<h3>{COIN_OMNI_NAME} application</h3>
+					<label>{COIN_NAME} config location:&nbsp;
 						<input type="text" className="dconfpath form-field"
 							name="dconfpath" value={settings.dconfpath} size={40}
-							onChange={handleChange} style={{ marginRight: "10px" }} />
+							onChange={handleChange}
+							style={{ marginRight: "10px" }} />
 						<button onClick={() => ipcRenderer.send("choose", {
 							rcvChannel: "choose:conf",
 							options: {
 								title: "Choose Config File...",
 								filters: [{
-									name: `${constants.COIN_NAME} Config Files`,
+									name: `${COIN_NAME} Config Files`,
 									extensions: ["conf"],
 								},
 								{ name: "All Files", extensions: ["*"] }],
@@ -145,6 +147,5 @@ export default function Settings
 				</div>
 			</Container>
 		</Modal>
-	</div>
-		;
+	</div>;
 };

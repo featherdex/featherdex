@@ -17,8 +17,8 @@ import {
 	getChainSends, notify
 } from '../util';
 import {
-	PROPID_BITCOIN, PROPID_COIN, SATOSHI, CHECK_BUTTON_SYMBOL, CROSS_MARK_SYMBOL,
-	WARNING_SYMBOL, ACCOUNT_LABEL
+	PROPID_BITCOIN, PROPID_COIN, SATOSHI, SYMBOL_CHECK_BUTTON, SYMBOL_CROSS_MARK,
+	SYMBOL_WARNING, ACCOUNT_LABEL
 } from '../constants';
 
 const C = {
@@ -61,7 +61,7 @@ const C = {
 };
 
 const AssetSend = () => {
-	const { assetList, getClient, getConstants } = React.useContext(AppContext);
+	const { consts, assetList, getClient } = React.useContext(AppContext);
 	const [asset, setAsset] = React.useState(-1);
 	const [amount, setAmount] = React.useState(new N(0));
 	const [available, setAvailable] = React.useState(new N(0));
@@ -118,7 +118,10 @@ const AssetSend = () => {
 	useInterval(refreshAsset, 30000);
 
 	const getErrmsg = async () => {
-		const { MIN_CHANGE } = getConstants();
+		const client = getClient();
+		if (client === null || consts === null) return "Client not initialized";
+
+		const { MIN_CHANGE } = consts;
 
 		let msg = null;
 		if (asset === -1) msg = "Please select an asset";
@@ -135,8 +138,8 @@ const AssetSend = () => {
 		// These error messages take priority, return first
 		if (msg) return msg;
 
-		const API = api(getClient());
-		const { COIN_TICKER } = getConstants();
+		const API = api(client);
+		const { COIN_TICKER } = consts;
 
 		const validAddress = await
 			handlePromise(repeatAsync(API.validateAddress, 5)(address),
@@ -159,15 +162,15 @@ const AssetSend = () => {
 	// Update error message display
 	React.useEffect(() => {
 		msgMutex.runExclusive(async () => setErrmsg(await getErrmsg()));
-	}, [asset, assets, amount, available, address, fee]);
+	}, [asset, assets, amount, available, address, fee, consts]);
 
 	// Update fee display
 	React.useEffect(() => {
 		feeMutex.runExclusive(async () => {
-			const {
-				EXODUS_ADDRESS, FEE_ADDRESS, MIN_CHANGE, COIN_SUPPLY
-			} = getConstants();
 			const client = getClient();
+			if (client === null || consts === null) return;
+
+			const { EXODUS_ADDRESS, FEE_ADDRESS, MIN_CHANGE, COIN_SUPPLY } = consts;
 			const API = api(client);
 
 			log().debug("entering fee estimation")
@@ -210,8 +213,8 @@ const AssetSend = () => {
 
 			const chainSends = getChainSends(addressAssets, amount);
 
-			const sendFee = await estimateSendFee(getConstants(), client, chainSends,
-				address).catch(e => {
+			const sendFee = await
+				estimateSendFee(consts, client, chainSends, address).catch(e => {
 					handleError(e, "error");
 					return null;
 				});
@@ -219,7 +222,7 @@ const AssetSend = () => {
 
 			setFee(sendFee.totalFee);
 		});
-	}, [asset, amount, assets]);
+	}, [asset, amount, assets, consts]);
 
 	const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const target = event.target;
@@ -232,6 +235,7 @@ const AssetSend = () => {
 	const doSend = () => sendMutex.runExclusive(async () => {
 		log().debug("enter doSend")
 		// run validation again because the information may not be up to date
+		// checks for null client and consts
 		{
 			const msg = await getErrmsg();
 			if (msg !== null) {
@@ -241,7 +245,6 @@ const AssetSend = () => {
 			}
 		}
 
-		const consts = getConstants();
 		const client = getClient();
 		const API = api(client);
 
@@ -343,8 +346,8 @@ const AssetSend = () => {
 						Send
 					</button>
 				</td>
-				<td>{errmsg ? `${CROSS_MARK_SYMBOL} ${errmsg}`
-					: `${CHECK_BUTTON_SYMBOL} Estimated fee: ${+fee}`}</td>
+				<td>{errmsg ? `${SYMBOL_CROSS_MARK} ${errmsg}`
+					: `${SYMBOL_CHECK_BUTTON} Estimated fee: ${+fee}`}</td>
 				<td></td>
 				<td style={{ paddingLeft: 8 }}>
 					<button onClick={() => setAmount(available)} style={{
@@ -361,7 +364,7 @@ const AssetSend = () => {
 
 const AssetReceive = () => {
 	const {
-		settings, getClient, getConstants, setSettings, saveSettings
+		consts, settings, getClient, setSettings, saveSettings
 	} = React.useContext(AppContext);
 
 	const [address, setAddress] = React.useState<string>(null);
@@ -490,12 +493,13 @@ const AssetReceive = () => {
 				</td>
 			</tr>
 			<tr>
-				<td>{getConstants().COIN_TICKER} balance:</td>
+				<td>{consts.COIN_TICKER ?? "Coin"} balance:</td>
 				<td>
-					<input type="number" name="balance" className="coin form-field"
-						value={balance.toFixed(8)} min={0} readOnly />
+					<input type="number" name="balance"
+						className="coin form-field" value={balance.toFixed(8)}
+						min={0} readOnly />
 				</td>
-				<td>{balance.lt(0.1) ? WARNING_SYMBOL : ""}</td>
+				<td>{balance.lt(0.1) ? SYMBOL_WARNING : ""}</td>
 				<td style={{ paddingLeft: 8 }}>
 					{balance.lt(0.1) ?
 						"Low balance, refill for Omni transactions" : ""}
@@ -515,7 +519,7 @@ const AssetReceive = () => {
 				</C.RButtons>
 			</tr>
 		</tbody>
-	</C.Table>
+	</C.Table>;
 };
 
 const AssetTransfer = () => {

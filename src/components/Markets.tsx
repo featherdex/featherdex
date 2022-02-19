@@ -13,8 +13,8 @@ import { toFormattedAmount } from '../util';
 const Markets = () => {
 	const { settings, tickers } = React.useContext(AppContext);
 
-	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ? [
-		{
+	const columns: Column<Record<string, any>>[] = React.useMemo(() => settings ?
+		[{
 			Header: 'Market',
 			accessor: 'market',
 			width: 150,
@@ -68,9 +68,7 @@ const Markets = () => {
 			Cell: props => toFormattedAmount(props.value, settings.numformat, 8,
 				"decimal", "none"),
 		},
-	] : [],
-		[settings]
-	);
+		] : [], [settings]);
 
 	const data = React.useMemo(() => Array.from(tickers.values()).sort((a, b) =>
 		b.vol - a.vol), [tickers]);

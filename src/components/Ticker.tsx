@@ -6,7 +6,7 @@ import AppContext from '../contexts/AppContext';
 import api from '../api';
 import Clock from './Clock';
 
-import { BITCOIN_SYMBOL } from '../constants';
+import { SYMBOL_BITCOIN } from '../constants';
 import { repeatAsync, uniqueId, toFormattedAmount } from '../util';
 
 type TickerElementProps = {
@@ -46,18 +46,22 @@ const C = {
 };
 
 const TickerMarquee = () => {
-	const { settings, getClient, getConstants } = React.useContext(AppContext);
+	const { consts, settings, getClient } = React.useContext(AppContext);
 
 	const {
-		COIN_TICKER, COIN_MARKET, COIN_MARKET_ALT, COIN_MARKET_ALT2,
-		COIN_BASE_TICKER, COIN_BASE_TICKER_ALT, COIN_BASE_TICKER_ALT2
-	} = getConstants();
+		COIN_TICKER = "-", COIN_MARKET = "-", COIN_MARKET_ALT = "-",
+		COIN_MARKET_ALT2 = "-", COIN_BASE_TICKER = "-", COIN_BASE_TICKER_ALT = "-",
+		COIN_BASE_TICKER_ALT2 = "-"
+	} = (consts ?? {});
 
 	const [coinRates, setCoinRates] = React.useState<CoinbaseRate>(null);
 	const [BTCRates, setBTCRates] = React.useState<CoinbaseRate>(null);
 
 	useInterval(async () => {
-		const API = api(getClient());
+		const client = getClient();
+		if (client === null || consts === null) return;
+
+		const API = api(client);
 		setCoinRates(await repeatAsync(API.getExchangeRates, 5)(COIN_TICKER)
 			.catch(_ => null));
 		setBTCRates(await repeatAsync(API.getExchangeRates, 5)("BTC")
@@ -78,7 +82,7 @@ const TickerMarquee = () => {
 			key={uniqueId("ticker-")} />,
 		<TickerElement prefix={`${COIN_MARKET}: `}
 			price={getPrice(coinRates, COIN_BASE_TICKER, 8).replace(/BTC./,
-				BITCOIN_SYMBOL)}
+				SYMBOL_BITCOIN)}
 			key={uniqueId("ticker-")} />] : []),
 		<TickerElement prefix={`BTC-USD: `}
 			price={getPrice(BTCRates, "USD")} key={uniqueId("ticker-")} />,
@@ -100,8 +104,10 @@ const Height = () => {
 			v.blocks, _ => 0));
 	}, 5000, true);
 
-	return <div style={{ fontSize: "10pt" }}>Blockchain Height:&nbsp;
-		{toFormattedAmount(height, settings.numformat, 0, "decimal", "none", true)}</div>
+	return <div style={{ fontSize: "10pt" }}>
+		Blockchain Height:
+		{toFormattedAmount(height, settings.numformat, 0, "decimal", "none", true)}
+	</div>;
 }
 
 const Ticker = () => {

@@ -82,14 +82,14 @@ const C = {
 }
 
 const Info = () => {
-	const { settings, getClient, getConstants } = React.useContext(AppContext);
+	const { consts, settings, getClient } = React.useContext(AppContext);
 
 	const [asset, setAsset] = React.useState(-1);
 	const [assetInfo, setAssetInfo] = React.useState<AssetInfo>(null);
 	const [nftInfo, setNFTInfo] = React.useState<NFTInfo[]>([]);
 
 	const format = (info: AssetInfo) => {
-		const { COIN_LOGO_PATH } = getConstants();
+		const { COIN_LOGO_PATH = "" } = (consts ?? {});
 		let logo;
 
 		if (info.propertyid === 0)
@@ -173,7 +173,11 @@ const Info = () => {
 	React.useEffect(() => {
 		if (asset === -1) return;
 
-		const { COIN_NAME, COIN_URL, COIN_SUPPLY } = getConstants();
+		const client = getClient();
+		if (client === null || consts === null) return;
+
+		const { COIN_NAME, COIN_URL, COIN_SUPPLY } = consts;
+		const API = api(client);
 
 		const btcinfo: AssetInfo = {
 			propertyid: 0,
@@ -217,7 +221,6 @@ const Info = () => {
 			return;
 		}
 
-		const API = api(getClient());
 		repeatAsync(API.getProperty, 5)(asset).then(v => {
 			setAssetInfo(v);
 			if (v["non-fungibletoken"])

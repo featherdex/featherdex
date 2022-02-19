@@ -5,6 +5,7 @@ import useResizeAware from 'react-resize-aware';
 import useInterval from 'use-interval';
 import styled from 'styled-components';
 
+import { Mutex } from 'async-mutex';
 import { DateTime } from 'luxon';
 import {
 	createChart, IChartApi, ISeriesApi, UTCTimestamp, WatermarkOptions,
@@ -50,9 +51,7 @@ const C = {
 };
 
 const Chart = () => {
-	const {
-		getClient, getConstants, refreshTrades
-	} = React.useContext(AppContext);
+	const { consts, getClient, refreshTrades } = React.useContext(AppContext);
 
 	const [idBuy, setIDBuy] = React.useState(-1);
 	const [idSell, setIDSell] = React.useState(-1);
@@ -64,6 +63,9 @@ const Chart = () => {
 	const [lastUpdate, setLastUpdate] = React.useState(DateTime.now().toUTC());
 
 	const [resizeListener, size] = useResizeAware();
+
+	const genMutex = React.useMemo(() => new Mutex(), []);
+	const refreshMutex = React.useMemo(() => new Mutex(), []);
 
 	const uid = React.useMemo(() => uniqueId("chart-"), []);
 
@@ -152,8 +154,8 @@ const Chart = () => {
 	}, [chart, chartType]);
 
 	React.useEffect(() => {
-		const errorMark = (msg: string): WatermarkOptions => {
-			return {
+		genMutex.runExclusive(async () => {
+			const errorMark = (msg: string): WatermarkOptions => ({
 				color: 'white',
 				visible: true,
 				text: msg,
@@ -162,44 +164,42 @@ const Chart = () => {
 				fontStyle: '',
 				horzAlign: 'center',
 				vertAlign: 'center'
-			};
-		}
+			});
 
-		if (!chart || !series || idBuy === -1 || idSell === -1) {
+			const client = getClient();
+			if (client === null || consts === null) return;
+
 			setReady(false);
-			if (series) series.setData([]);
-			if (chart)
+
+			if (!chart || !series || idBuy === -1 || idSell === -1) {
+				if (series) series.setData([]);
+				if (chart)
+					chart.applyOptions({
+						watermark: errorMark("type in a trading pair"),
+					});
+				return;
+			}
+
+			if (idBuy === idSell) {
+				series.setData([]);
 				chart.applyOptions({
-					watermark: errorMark("type in a trading pair"),
+					watermark: errorMark("buy and sell assets cannot be the same"),
 				});
-			return;
-		}
+				return;
+			}
 
-		if (idBuy === idSell) {
-			setReady(false);
-			series.setData([]);
-			chart.applyOptions({
-				watermark: errorMark("buy and sell assets cannot be the same"),
-			});
-			return;
-		}
+			// TODO
+			if (idBuy > PROPID_COIN && idSell > PROPID_COIN) {
+				series.setData([]);
+				chart.applyOptions({
+					watermark:
+						errorMark("arbitrary token pairs are not yet supported"),
+				});
+				return;
+			}
 
-		// TODO
-		if (idBuy > PROPID_COIN && idSell > PROPID_COIN) {
-			setReady(false);
-			series.setData([]);
-			chart.applyOptions({
-				watermark:
-					errorMark("arbitrary token pairs are not yet supported"),
-			});
-			return;
-		}
-
-		(async function genData() {
-			setReady(false);
-
-			const API = api(getClient());
-			const { COIN_MARKET } = getConstants();
+			const API = api(client);
+			const { COIN_MARKET } = consts;
 
 			let data: (BarData | WhitespaceData)[] = [];
 
@@ -370,122 +370,125 @@ const Chart = () => {
 			});
 
 			setReady(true);
-		})();
+		});
 	}, [chart, series, chartType, chartInt, idBuy, idSell]);
 
-	useInterval(() => {
+	const refresh = async () => {
 		if (!ready) return;
-		(async function() {
-			const API = api(getClient());
-			const { COIN_MARKET } = getConstants();
 
-			const interval = getInterval();
-			const rawInterval = interval === "DAY_1" ? 24 * 60 * 60 :
-				(interval === "HOUR_1" ? 60 * 60 : 5 * 60);
+		const client = getClient();
+		if (client === null || consts === null) return;
 
-			const now = DateTime.now().toUTC();
+		const API = api(client);
+		const { COIN_MARKET } = consts;
 
-			let updateTime = lastUpdate.startOf(interval === "DAY_1" ?
-				"day" : (interval === "HOUR_1" ? "hour" : "minute"));
+		const interval = getInterval();
+		const rawInterval = interval === "DAY_1" ? 24 * 60 * 60 :
+			(interval === "HOUR_1" ? 60 * 60 : 5 * 60);
 
-			if (interval === "MINUTE_5") {
-				const mins = updateTime.minute;
-				updateTime = updateTime.set({ minute: mins - mins % 5 });
+		const now = DateTime.now().toUTC();
+
+		let updateTime = lastUpdate.startOf(interval === "DAY_1" ?
+			"day" : (interval === "HOUR_1" ? "hour" : "minute"));
+
+		if (interval === "MINUTE_5") {
+			const mins = updateTime.minute;
+			updateTime = updateTime.set({ minute: mins - mins % 5 });
+		}
+
+		const updateNextTime = updateTime.plus(interval === "DAY_1" ?
+			{ days: 1 } : (interval === "HOUR_1" ?
+				{ hours: 1 } : { minutes: 5 }));
+
+		const candleTime = Math.floor(updateTime.toSeconds()) as UTCTimestamp;
+		const candleNextTime =
+			Math.floor(updateNextTime.toSeconds()) as UTCTimestamp;
+
+		let btcdata: BarData[];
+		if (idBuy === PROPID_BITCOIN || idSell === PROPID_BITCOIN)
+			btcdata = await
+				API.getCoinOHLCRecent(COIN_MARKET, interval).catch(err => {
+					handleError(err);
+					return [];
+				});
+
+		let assetdata: (BarData | WhitespaceData)[];
+		if (idBuy > PROPID_COIN || idSell > PROPID_COIN) {
+			const trades: LineData[] = await refreshTrades().then(arr =>
+				arr.filter(trade => trade.time >= candleTime
+					&& trade.idSell === (idBuy > PROPID_COIN ?
+						idBuy : idSell)).map(tradeToLineData), e => {
+							handleError(e, "error");
+							return null;
+						});
+			if (trades === null) return;
+
+			assetdata = toCandle(trades, rawInterval);
+		}
+
+		const updateCandle = (offset: number, ctime: UTCTimestamp) => {
+			let candle: BarData | WhitespaceData;
+			if (btcdata && btcdata.length !== 0) {
+				let btccandle = btcdata[btcdata.length - 1 - offset];
+
+				if (idBuy === PROPID_BITCOIN) btccandle = inverseOHLC(btccandle);
+				if (idBuy === PROPID_COIN || idSell === PROPID_COIN)
+					candle = { ...btccandle };
 			}
 
-			const updateNextTime = updateTime.plus(interval === "DAY_1" ?
-				{ days: 1 } : (interval === "HOUR_1" ?
-					{ hours: 1 } : { minutes: 5 }));
+			if (assetdata && assetdata.length !== 0) {
+				let assetcandle = assetdata.find(v =>
+					v.time === ctime);
 
-			const candleTime = Math.floor(updateTime.toSeconds()) as UTCTimestamp;
-			const candleNextTime =
-				Math.floor(updateNextTime.toSeconds()) as UTCTimestamp;
-
-			let btcdata: BarData[];
-			if (idBuy === PROPID_BITCOIN || idSell === PROPID_BITCOIN)
-				btcdata = await
-					API.getCoinOHLCRecent(COIN_MARKET, interval).catch(err => {
-						handleError(err);
-						return [];
-					});
-
-			let assetdata: (BarData | WhitespaceData)[];
-			if (idBuy > PROPID_COIN || idSell > PROPID_COIN) {
-				const trades: LineData[] = await refreshTrades().then(arr =>
-					arr.filter(trade => trade.time >= candleTime
-						&& trade.idSell === (idBuy > PROPID_COIN ?
-							idBuy : idSell)).map(tradeToLineData), e => {
-								handleError(e, "error");
-								return null;
-							});
-				if (trades === null) return;
-
-				assetdata = toCandle(trades, rawInterval);
-			}
-
-			const updateCandle = (offset: number, ctime: UTCTimestamp) => {
-				let candle: BarData | WhitespaceData;
-				if (btcdata && btcdata.length !== 0) {
-					let btccandle = btcdata[btcdata.length - 1 - offset];
-
-					if (idBuy === PROPID_BITCOIN) btccandle = inverseOHLC(btccandle);
-					if (idBuy === PROPID_COIN || idSell === PROPID_COIN)
-						candle = { ...btccandle };
-				}
-
-				if (assetdata && assetdata.length !== 0) {
-					let assetcandle = assetdata.find(v =>
-						v.time === ctime);
-
-					if (!assetcandle || isWhitespaceData(assetcandle))
-						candle = { time: ctime };
-					else {
-						if (idSell > PROPID_COIN)
-							assetcandle = inverseOHLC(assetcandle);
-
-						if (candle)
-							candle = {
-								time: ctime,
-								open: (candle as BarData).open
-									* (assetcandle as BarData).open,
-								high: (candle as BarData).high
-									* (assetcandle as BarData).high,
-								low: (candle as BarData).low
-									* (assetcandle as BarData).low,
-								close: (candle as BarData).close
-									* (assetcandle as BarData).close
-							};
-						else
-							candle = { ...assetcandle };
-					}
-				}
-
-				if (!candle)
+				if (!assetcandle || isWhitespaceData(assetcandle))
 					candle = { time: ctime };
+				else {
+					if (idSell > PROPID_COIN)
+						assetcandle = inverseOHLC(assetcandle);
 
-				if (!((candle as BarData).open || (candle as LineData).value))
-					series.update(candle);
-				else
-					series.update((chartType === "line"
-						|| chartType === "area") ?
-						toLine(candle as BarData) : candle);
-
+					if (candle)
+						candle = {
+							time: ctime,
+							open: (candle as BarData).open
+								* (assetcandle as BarData).open,
+							high: (candle as BarData).high
+								* (assetcandle as BarData).high,
+							low: (candle as BarData).low
+								* (assetcandle as BarData).low,
+							close: (candle as BarData).close
+								* (assetcandle as BarData).close
+						};
+					else
+						candle = { ...assetcandle };
+				}
 			}
 
-			// need to update two candles if overflow
-			if (now >= updateNextTime) {
-				updateCandle(1, candleTime);
-				updateCandle(0, candleNextTime);
-			} else
-				updateCandle(0, candleTime);
+			if (!candle)
+				candle = { time: ctime };
 
-			setLastUpdate(now);
-		})();
-	}, 1000);
+			if (!((candle as BarData).open || (candle as LineData).value))
+				series.update(candle);
+			else
+				series.update((chartType === "line"
+					|| chartType === "area") ?
+					toLine(candle as BarData) : candle);
+
+		}
+
+		// need to update two candles if overflow
+		if (now >= updateNextTime) {
+			updateCandle(1, candleTime);
+			updateCandle(0, candleNextTime);
+		} else
+			updateCandle(0, candleTime);
+
+		setLastUpdate(now);
+	};
+
+	useInterval(() => { refreshMutex.runExclusive(refresh); }, 1000);
 
 	React.useEffect(() => {
-		if (!chart) return;
-		chart.resize(size.width, size.height);
+		if (!!chart) chart.resize(size.width, size.height);
 	}, [chart, size]);
 
 	return <>

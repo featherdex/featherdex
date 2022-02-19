@@ -14,9 +14,7 @@ import AppContext from '../contexts/AppContext';
 import Table from './Table';
 import api from '../api';
 
-import {
-	PROPID_BITCOIN, PROPID_COIN, OMNI_EXPLORER_ENDPOINT, COIN_EXPLORER_ENDPOINT
-} from '../constants';
+import { PROPID_BITCOIN, PROPID_COIN, SYMBOL_REFRESH } from '../constants';
 import {
 	handlePromise, repeatAsync, handleError, toFormattedAmount, sendOpenLink, notify
 } from '../util';
@@ -55,7 +53,7 @@ const C = {
 
 const Sales = () => {
 	const {
-		settings, getClient, getConstants, refreshTrades
+		consts, settings, getClient, refreshTrades
 	} = React.useContext(AppContext);
 
 	const [id, setID] = React.useState(-1);
@@ -83,7 +81,10 @@ const Sales = () => {
 
 				if (!v.txid) return <span>{time}</span>;
 				else {
-					const { COIN_OMNI_NAME, COIN_NAME } = getConstants();
+					const {
+						COIN_OMNI_NAME = "Omni", COIN_NAME = "Coin",
+						OMNI_EXPLORER_ENDPOINT = "", COIN_EXPLORER_ENDPOINT = ""
+					} = (consts ?? {});
 
 					const onOmni = () =>
 						sendOpenLink(`${OMNI_EXPLORER_ENDPOINT}/tx/${v.txid}`);
@@ -149,15 +150,16 @@ const Sales = () => {
 			Cell: props => toFormattedAmount(props.value.total,
 				settings.numformat, 8, "decimal", props.value.color),
 		},
-	] : [],
-		[settings]
-	);
+	] : [], [consts, settings]);
 
 	const refreshData = async () => {
 		if (id < PROPID_COIN) return;
 
-		const API = api(getClient());
-		const { OMNI_START_HEIGHT, COIN_MARKET } = getConstants();
+		const client = getClient();
+		if (client === null || consts === null) return;
+
+		const API = api(client);
+		const { OMNI_START_HEIGHT, COIN_MARKET } = consts;
 
 		const height = await handlePromise(repeatAsync(API.getBlockchainInfo, 5)(),
 			"Could not get blockchain info", v => v.blocks);
@@ -213,38 +215,38 @@ const Sales = () => {
 
 	React.useEffect(() => { refreshData(); }, [id]);
 
-	return <>
-		<C.SalesContainer>
-			<C.SalesLabel>Trade asset:</C.SalesLabel>
-			<C.SalesSearch>
-				<AssetSearch setAssetCallback={setID} zIndex={2} />
-			</C.SalesSearch>
-			<div className="chart-hspace"></div>
-			<C.SalesLabel>Base asset:</C.SalesLabel>
-			<C.SalesText>
-				{id === PROPID_COIN ?
-					getConstants().COIN_BASE_TICKER :
-					getConstants().COIN_TICKER}
-			</C.SalesText>
-			<div className="chart-hspace"></div>
-			<label className="chart-button">
-				<input type="button" name="refresh" onClick={refreshData} />
-				<span className="checkmark">&#128472;</span>
-			</label>
-		</C.SalesContainer>
-		{id === -1 ?
-			<div className="empty" style={{ fontSize: 12 }}>
-				Select assets to see trades
-			</div> : id === PROPID_BITCOIN ?
+	{
+		const { COIN_TICKER = "-", COIN_BASE_TICKER = "-" } = (consts ?? {});
+		return <>
+			<C.SalesContainer>
+				<C.SalesLabel>Trade asset:</C.SalesLabel>
+				<C.SalesSearch>
+					<AssetSearch setAssetCallback={setID} zIndex={2} />
+				</C.SalesSearch>
+				<div className="chart-hspace"></div>
+				<C.SalesLabel>Base asset:</C.SalesLabel>
+				<C.SalesText>
+					{id === PROPID_COIN ? COIN_BASE_TICKER : COIN_TICKER}
+				</C.SalesText>
+				<div className="chart-hspace"></div>
+				<label className="chart-button">
+					<input type="button" name="refresh" onClick={refreshData} />
+					<span className="checkmark">{SYMBOL_REFRESH}</span>
+				</label>
+			</C.SalesContainer>
+			{id === -1 ?
 				<div className="empty" style={{ fontSize: 12 }}>
-					Invalid selection
-				</div> : (!data || data.length === 0 ?
+					Select assets to see trades
+				</div> : id === PROPID_BITCOIN ?
 					<div className="empty" style={{ fontSize: 12 }}>
-						No trades
-					</div> :
-					<Table className="sales-table" columns={columns} data={data} />)
-		}
-	</>;
+						Invalid selection
+					</div> : (!data || data.length === 0 ?
+						<div className="empty" style={{ fontSize: 12 }}>
+							No trades
+						</div> : <Table className="sales-table" columns={columns}
+							data={data} />)}
+		</>;
+	}
 };
 
 export default Sales;

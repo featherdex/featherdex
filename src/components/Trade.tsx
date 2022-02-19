@@ -20,7 +20,7 @@ import {
 } from '../util';
 import {
 	SATOSHI, TRADE_FEERATE, MIN_TRADE_FEE, PROPID_BITCOIN, PROPID_COIN,
-	ACCOUNT_LABEL, BITTREX_TRADE_FEERATE, CROSS_MARK_SYMBOL, CHECK_BUTTON_SYMBOL,
+	ACCOUNT_LABEL, BITTREX_TRADE_FEERATE, SYMBOL_CROSS_MARK, SYMBOL_CHECK_BUTTON,
 	OrderAction
 } from '../constants';
 
@@ -180,7 +180,7 @@ const reducerTrade =
 
 const Trader = ({ state, dispatch }: TraderProps) => {
 	const {
-		settings, getClient, getConstants, addPendingOrder
+		consts, settings, getClient, addPendingOrder
 	} = React.useContext(AppContext);
 
 	const tradeMutex = React.useMemo(() => new Mutex(), []);
@@ -216,8 +216,11 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 	}
 
 	const refreshAvailable = () => availMutex.runExclusive(async () => {
-		const { COIN_TICKER, COIN_BASE_TICKER } = getConstants();
-		const API = api(getClient());
+		const client = getClient();
+		if (client === null || consts === null) return;
+
+		const { COIN_TICKER, COIN_BASE_TICKER } = consts;
+		const API = api(client);
 
 		if (state.trade === -1) return;
 
@@ -252,7 +255,10 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 	useInterval(refreshAvailable, 30000);
 
 	const getErrmsg = async () => {
-		const { COIN_TICKER, MIN_CHANGE } = getConstants();
+		const client = getClient();
+		if (client === null || consts === null) return "Client not initialized";
+
+		const { COIN_TICKER, MIN_CHANGE } = consts;
 
 		// case: unselected
 		if (state.trade === -1 || state.base === -1)
@@ -283,7 +289,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				+ "Please obtain one from your Bittrex account and input them "
 				+ "into settings.";
 
-		const API = api(getClient());
+		const API = api(client);
 
 		// Omni trades
 		if (state.base === PROPID_COIN) {
@@ -322,14 +328,12 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		msgMutex.runExclusive(async () =>
 			cDispatch("set_errmsg")(await getErrmsg()));
 	}, [state.trade, state.buysell, state.price, state.quantity, state.total,
-		settings]);
+		settings, consts]);
 
 	const doTrade = () => tradeMutex.runExclusive(async () => {
 		const logger = log();
-		const consts = getConstants();
-		const { COIN_MARKET, COIN_TICKER, COIN_BASE_TICKER, MIN_CHANGE } = consts;
 
-		// Need to validate again
+		// Need to validate again (null consts checked here)
 		{
 			const msg = await getErrmsg();
 			if (msg !== null) {
@@ -338,6 +342,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 				return;
 			}
 		}
+
+		const { COIN_MARKET, COIN_TICKER, COIN_BASE_TICKER, MIN_CHANGE } = consts;
 
 		const tradeInfo =
 			`${state.orderType.toUpperCase()} ${state.buysell.toUpperCase()}`
@@ -351,6 +357,12 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		if (!c) return;
 
 		const client = getClient();
+
+		if (client === null) {
+			sendAlert("Client not initialized");
+			return;
+		}
+
 		const API = api(client);
 
 		// Bittrex trade, place Bittrex order and hope for the best
@@ -598,141 +610,150 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		else cDispatch("set_quantity")(state.available);
 	};
 
-	return <>
-		<C.Trader.Body>
-			<C.Trader.Inputs>
-				<thead><tr>
-					<th style={{ textAlign: "center" }} colSpan={4}>
-						Place a trade
-					</th>
-				</tr></thead>
-				<tbody>
-					<tr>
-						<td style={{ fontSize: "9pt", textAlign: "right" }}>
-							Trade asset:
-						</td>
-						<td style={{
-							minWidth: "120px",
-							padding: "0 8px 0 8px"
-						}}>
-							<AssetSearch setAssetCallback={setTrade}
-								filter={v => v.id !== 0} zIndex={2} />
-						</td>
-						<td style={{ fontSize: "9pt", textAlign: "right" }}>
-							Price:
-						</td>
-						<td>
-							<CoinInput value={state.price}
-								dispatch={cDispatch("set_price")} step={SATOSHI} />
-						</td>
-					</tr>
-					<tr>
-						<td style={{ fontSize: "9pt", textAlign: "right" }}>
-							Base asset:
-						</td>
-						<td style={{
-							minWidth: "120px",
-							padding: "0 8px 0 8px",
-							fontFamily: "monospace",
-							fontSize: "12pt",
-							textAlign: "right",
-						}}>
-							{state.trade === PROPID_COIN ?
-								getConstants().COIN_BASE_TICKER :
-								getConstants().COIN_TICKER}
-						</td>
-						<td style={{ fontSize: "9pt", textAlign: "right" }}>
-							Quantity:
-						</td>
-						<td>
-							<CoinInput value={state.quantity}
-								dispatch={cDispatch("set_quantity")}
-								step={state.isDivisible ? SATOSHI : new N(1)}
-								digits={state.isDivisible ? 8 : 0}
-								disabled={state.orderType === "market"
-									&& state.buysell === "buy"} />
-						</td>
-					</tr>
-					<tr>
-						<td style={{ fontSize: "9pt", textAlign: "right" }}>
-							Order type:
-						</td>
-						<td style={{
-							textAlign: "right",
-							paddingRight: "8px"
-						}}>
-							<select name="ordertype" value={state.orderType}
-								onChange={handleChangeSel}>
-								{state.buysell === "buy"
-									&& <option value="market">Market</option>}
-								<option value="limit">Limit</option>
-							</select>
-							<select name="buysell" value={state.buysell}
-								onChange={handleChangeSel} style={{ marginLeft: 8 }}>
-								<option value="buy">Buy</option>
-								<option value="sell">Sell</option>
-							</select>
-						</td>
-						<td style={{ fontSize: "9pt", textAlign: "right" }}>
-							Est. fee:
-						</td>
-						<td>
-							<input type="number" name="fee"
-								className="coin form-field"
-								value={state.fee.toFixed(8)} min={0} readOnly />
-						</td>
-					</tr>
-					<tr>
-						<td style={{ fontSize: "9pt", textAlign: "right" }}>
-							{state.base === PROPID_BITCOIN
-								&& state.buysell === "buy" ?
-								getConstants().COIN_BASE_TICKER
-								: (state.base === PROPID_COIN
-									&& state.buysell === "sell" ?
-									"Asset" : getConstants().COIN_TICKER)} in wallet:
-						</td>
-						<td style={{
-							textAlign: "right",
-							paddingRight: "8px"
-						}}>
-							<input type="number" name="balance"
-								className="coin form-field" value=
-								{state.available.toFixed(state.buysell === "buy" ?
-									8 : (state.isDivisible ? 8 : 0))} min={0}
-								readOnly />
-						</td>
-						<td style={{ fontSize: "9pt", textAlign: "right" }}>
-							Total:
-						</td>
-						<td>
-							<CoinInput value={state.total}
-								dispatch={cDispatch("set_total")} step={SATOSHI} />
-						</td>
-					</tr>
-					<tr style={{ paddingTop: "8px" }}>
-						<td style={{ fontSize: "9pt" }} colSpan={2}>
-							{state.errmsg ? `${CROSS_MARK_SYMBOL} ${state.errmsg}`
-								: `${CHECK_BUTTON_SYMBOL} OK`}
-						</td>
-						<td colSpan={2}>
-							<C.Trader.Buttons>
-								<label style={{ flexGrow: 1 }}>
-									<input type="checkbox" name="nohighfees"
-										className="form-field"
-										checked={state.isNoHighFees}
-										onChange={handleChange} />
-									Low accept fees
-								</label>
-								<button onClick={setMax}>Max</button>
-								<button onClick={doTrade}
-									disabled={state.errmsg !== null}>Confirm</button>
-							</C.Trader.Buttons>
-						</td>
-					</tr>
-				</tbody>
-			</C.Trader.Inputs>
-		</C.Trader.Body>
-	</>;
+	{
+		const { COIN_TICKER = "-", COIN_BASE_TICKER = "-" } = (consts ?? {});
+
+		return <>
+			<C.Trader.Body>
+				<C.Trader.Inputs>
+					<thead><tr>
+						<th style={{ textAlign: "center" }} colSpan={4}>
+							Place a trade
+						</th>
+					</tr></thead>
+					<tbody>
+						<tr>
+							<td style={{ fontSize: "9pt", textAlign: "right" }}>
+								Trade asset:
+							</td>
+							<td style={{
+								minWidth: "120px",
+								padding: "0 8px 0 8px"
+							}}>
+								<AssetSearch setAssetCallback={setTrade}
+									filter={v => v.id !== 0} zIndex={2} />
+							</td>
+							<td style={{ fontSize: "9pt", textAlign: "right" }}>
+								Price:
+							</td>
+							<td>
+								<CoinInput value={state.price}
+									dispatch={cDispatch("set_price")}
+									step={SATOSHI} />
+							</td>
+						</tr>
+						<tr>
+							<td style={{ fontSize: "9pt", textAlign: "right" }}>
+								Base asset:
+							</td>
+							<td style={{
+								minWidth: "120px",
+								padding: "0 8px 0 8px",
+								fontFamily: "monospace",
+								fontSize: "12pt",
+								textAlign: "right",
+							}}>
+								{state.trade === PROPID_COIN ?
+									COIN_BASE_TICKER : COIN_TICKER}
+							</td>
+							<td style={{ fontSize: "9pt", textAlign: "right" }}>
+								Quantity:
+							</td>
+							<td>
+								<CoinInput value={state.quantity}
+									dispatch={cDispatch("set_quantity")}
+									step={state.isDivisible ? SATOSHI : new N(1)}
+									digits={state.isDivisible ? 8 : 0}
+									disabled={state.orderType === "market"
+										&& state.buysell === "buy"} />
+							</td>
+						</tr>
+						<tr>
+							<td style={{ fontSize: "9pt", textAlign: "right" }}>
+								Order type:
+							</td>
+							<td style={{
+								textAlign: "right",
+								paddingRight: "8px"
+							}}>
+								<select name="ordertype" value={state.orderType}
+									onChange={handleChangeSel}>
+									{state.buysell === "buy"
+										&& <option value="market">Market</option>}
+									<option value="limit">Limit</option>
+								</select>
+								<select name="buysell" value={state.buysell}
+									onChange={handleChangeSel}
+									style={{ marginLeft: 8 }}>
+									<option value="buy">Buy</option>
+									<option value="sell">Sell</option>
+								</select>
+							</td>
+							<td style={{ fontSize: "9pt", textAlign: "right" }}>
+								Est. fee:
+							</td>
+							<td>
+								<input type="number" name="fee"
+									className="coin form-field"
+									value={state.fee.toFixed(8)} min={0} readOnly />
+							</td>
+						</tr>
+						<tr>
+							<td style={{ fontSize: "9pt", textAlign: "right" }}>
+								{state.base === PROPID_BITCOIN
+									&& state.buysell === "buy" ? COIN_BASE_TICKER
+									: (state.base === PROPID_COIN
+										&& state.buysell === "sell" ?
+										"Asset" : COIN_TICKER)}&nbsp;
+								in wallet:
+							</td>
+							<td style={{
+								textAlign: "right",
+								paddingRight: "8px"
+							}}>
+								<input type="number" name="balance"
+									className="coin form-field"
+									value={state.available.toFixed(state.buysell ===
+										"buy" ? 8 : (state.isDivisible ? 8 : 0))}
+									min={0} readOnly />
+							</td>
+							<td style={{ fontSize: "9pt", textAlign: "right" }}>
+								Total:
+							</td>
+							<td>
+								<CoinInput value={state.total}
+									dispatch={cDispatch("set_total")}
+									step={SATOSHI} />
+							</td>
+						</tr>
+						<tr style={{ paddingTop: "8px" }}>
+							<td style={{ fontSize: "9pt" }} colSpan={2}>
+								{state.errmsg ?
+									`${SYMBOL_CROSS_MARK} ${state.errmsg}`
+									: `${SYMBOL_CHECK_BUTTON} OK`}
+							</td>
+							<td colSpan={2}>
+								<C.Trader.Buttons>
+									<label style={{ flexGrow: 1 }}>
+										<input type="checkbox" name="nohighfees"
+											className="form-field"
+											checked={state.isNoHighFees}
+											onChange={handleChange} />
+										Low accept fees
+									</label>
+									<button onClick={setMax}>Max</button>
+									<button onClick={doTrade}
+										disabled={state.errmsg !== null}>
+										Confirm
+									</button>
+								</C.Trader.Buttons>
+							</td>
+						</tr>
+					</tbody>
+				</C.Trader.Inputs>
+			</C.Trader.Body>
+		</>;
+	}
 };
 
 const C = {
@@ -772,7 +793,7 @@ const C = {
 	min-width: 600px;
 	flex: 1;
 	overflow: hidden;`
-}
+};
 
 const Trade = () => {
 	const initialState: TraderState = {
@@ -790,7 +811,7 @@ const Trade = () => {
 		bids: [],
 		asks: [],
 		errmsg: null,
-	}
+	};
 
 	const [state, dispatch] = React.useReducer(reducerTrade, initialState);
 

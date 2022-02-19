@@ -23,20 +23,20 @@ export const TYPE_ACCEPT_OFFER = 22;
 export const TYPE_CREATE_PROPERTY_FIXED = 50;
 export const TYPE_CREATE_PROPERTY_MANUAL = 54;
 export const TYPE_GRANT_PROPERTY = 55;
+export const TYPE_PURCHASE = 255;
 
 export const BITTREX_API_ENDPOINT = "https://api.bittrex.com/v3";
 export const COINBASE_API_ENDPOINT = "https://api.coinbase.com/v2";
-export const OMNI_EXPLORER_ENDPOINT = "https://dt45325.omniexplorer.info/ftc";
-export const COIN_EXPLORER_ENDPOINT = "https://explorer.feathercoin.com";
 
-export const BITCOIN_SYMBOL = "\u20bf";
-export const EURO_SYMBOL = "\u20ac";
-export const X_SYMBOL = "\u2715";
-export const UP_SYMBOL = "\u25b2";
-export const DOWN_SYMBOL = "\u25bc";
-export const CHECK_BUTTON_SYMBOL = "\u2705";
-export const CROSS_MARK_SYMBOL = "\u274c";
-export const WARNING_SYMBOL = "\u26a0";
+export const SYMBOL_BITCOIN = "\u20bf";
+export const SYMBOL_EURO = "\u20ac";
+export const SYMBOL_X = "\u2715";
+export const SYMBOL_UP = "\u25b2";
+export const SYMBOL_DOWN = "\u25bc";
+export const SYMBOL_CHECK_BUTTON = "\u2705";
+export const SYMBOL_CROSS_MARK = "\u274c";
+export const SYMBOL_WARNING = "\u26a0";
+export const SYMBOL_REFRESH = "\u1f5d8";
 
 export const PROPID_BITCOIN = 0;
 export const PROPID_COIN = 1;

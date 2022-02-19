@@ -20,7 +20,7 @@ import {
 import {
 	repeatAsync, handlePromise, estimateTxFee, estimateBuyFee, estimateSellFee,
 	getPendingAccepts, getFillOrders, getAddressAssets, uniqueId, toFormattedAmount,
-	getChainSends, handleError, dsum, log
+	getChainSends, handleError, dsum
 } from '../util';
 
 type OrderbookProps = {
@@ -29,7 +29,7 @@ type OrderbookProps = {
 }
 
 const Orderbook = ({ state, dispatch }: OrderbookProps) => {
-	const { settings, getClient, getConstants } = React.useContext(AppContext);
+	const { consts, settings, getClient } = React.useContext(AppContext);
 
 	const refreshMutex = React.useMemo(() => new Mutex(), []);
 
@@ -56,10 +56,12 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 			}
 
 			return data;
-		}
+		};
 
-		const { COIN_MARKET } = getConstants();
 		const client = getClient();
+		if (client === null || consts === null) return;
+
+		const { COIN_MARKET } = consts;
 		const API = api(client);
 		if (state.trade === PROPID_COIN) {
 			// coin-BTC
@@ -74,14 +76,12 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 		const orders = await handlePromise(repeatAsync(API.getExchangeSells, 3)(),
 			"Could not get sell orders on exchange",
 			x => x.filter(v => parseInt(v.propertyid) === state.trade));
-
 		if (orders === null) return;
 
 		const accepts = await getPendingAccepts(client).catch(e => {
 			handleError(e);
 			return null;
 		});
-
 		if (accepts === null) return;
 
 		let bids = new Map<string, Decimal[]>();
@@ -146,7 +146,7 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 					}
 
 					estFee = await
-						estimateBuyFee(getConstants(), client, fillOrders).then(v =>
+						estimateBuyFee(consts, client, fillOrders).then(v =>
 							v.totalFee, e => {
 								handleError(e, "error");
 								return null;
@@ -164,11 +164,12 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 
 					let chainSends = getChainSends(addressAssets, state.quantity);
 
-					estFee = await estimateSellFee(getConstants(), client,
-						chainSends).then(v => v.totalFee, e => {
-							handleError(e, "error");
-							return null;
-						});
+					estFee = await
+						estimateSellFee(consts, client, chainSends).then(v =>
+							v.totalFee, e => {
+								handleError(e, "error");
+								return null;
+							});
 					if (estFee === null) return;
 				}
 			}

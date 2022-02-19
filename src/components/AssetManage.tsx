@@ -17,7 +17,7 @@ import {
 	createRawRevoke
 } from '../util';
 import {
-	PROPID_COIN, SATOSHI, CHECK_BUTTON_SYMBOL, CROSS_MARK_SYMBOL, TYPE_DIVISIBLE,
+	PROPID_COIN, SATOSHI, SYMBOL_CHECK_BUTTON, SYMBOL_CROSS_MARK, TYPE_DIVISIBLE,
 	TYPE_INDIVISIBLE, TYPE_NFT, ECOSYSTEM_TEST, ECOSYSTEM_MAIN, ACCOUNT_LABEL
 } from '../constants';
 
@@ -144,7 +144,7 @@ const initCreateState: CreateState = {
 };
 
 const AssetCreate = () => {
-	const { getConstants, getClient, refreshAssets } = React.useContext(AppContext);
+	const { consts, getClient, refreshAssets } = React.useContext(AppContext);
 
 	const [state, dispatch] = React.useReducer(reducerCreate, initCreateState);
 
@@ -156,6 +156,9 @@ const AssetCreate = () => {
 	const feeMutex = React.useMemo(() => new Mutex(), []);
 
 	const getErrmsg = () => {
+		const client = getClient();
+		if (client === null || consts === null) return "Client not initialized";
+
 		if (state.name.length === 0) return "Name required";
 		if (state.assetType === "fixed") {
 			if (state.amount.lte(0)) return "Amount must be greater than zero";
@@ -172,22 +175,22 @@ const AssetCreate = () => {
 	React.useEffect(() => {
 		msgMutex.runExclusive(() => cDispatch("set_errmsg")(getErrmsg()));
 	}, [state.name, state.assetType, state.pre, state.hasPre, state.isDivisible,
-	state.amount]);
+	state.amount, consts]);
 
 	const getFee = async () => {
-		if (state.errmsg !== null)
+		const client = getClient();
+		if (state.errmsg !== null || client === null || consts === null)
 			return { createFee: new N(0), totalFee: new N(0) };
 
-		return await estimateCreateFee(getConstants(), getClient(),
-			state.assetType, state.name, state.category, state.subcategory,
-			state.url, state.data);
+		return await estimateCreateFee(consts, client, state.assetType, state.name,
+			state.category, state.subcategory, state.url, state.data);
 	}
 
 	React.useEffect(() => {
 		feeMutex.runExclusive(async () => cDispatch("set_fee")
 			(await getFee().then(fee => fee.totalFee, _ => new N(0))));
 	}, [state.assetType, state.name, state.category, state.subcategory, state.url,
-	state.data, state.amount, state.errmsg]);
+	state.data, state.amount, state.errmsg, consts]);
 
 	const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
 		const target = event.target;
@@ -251,7 +254,6 @@ const AssetCreate = () => {
 			if (!c) return;
 		}
 
-		const consts = getConstants();
 		const client = getClient();
 		const API = api(client);
 
@@ -369,12 +371,12 @@ const AssetCreate = () => {
 						value={state.url} onChange={handleChange} />
 				</td>
 				<td colSpan={2}>
-					{state.errmsg ? `${CROSS_MARK_SYMBOL} ${state.errmsg}`
+					{state.errmsg ? `${SYMBOL_CROSS_MARK} ${state.errmsg}`
 						: (state.assetType === "managed" ?
-							`${CHECK_BUTTON_SYMBOL} Manage supply in "Modify Asset"`
+							`${SYMBOL_CHECK_BUTTON} Manage supply in "Modify Asset"`
 							: (state.assetType === "nft" ?
-								`${CHECK_BUTTON_SYMBOL} Mint NFTs in "Modify Asset"`
-								: CHECK_BUTTON_SYMBOL
+								`${SYMBOL_CHECK_BUTTON} Mint NFTs in "Modify Asset"`
+								: SYMBOL_CHECK_BUTTON
 								+ ` Estimated fee: ${+state.fee}`))}
 					<button style={{ marginLeft: 8 }} onClick={doCreate}
 						disabled={state.errmsg !== null}>Create</button>
@@ -502,7 +504,7 @@ const initModifyState: ModifyState = {
 };
 
 const AssetModify = () => {
-	const { getConstants, getClient } = React.useContext(AppContext);
+	const { consts, getClient } = React.useContext(AppContext);
 
 	const [state, dispatch] = React.useReducer(reducerModify, initModifyState);
 
@@ -553,7 +555,10 @@ const AssetModify = () => {
 	React.useEffect(() => { doUpdate(); }, [state.asset]);
 
 	const getErrmsg = async () => {
-		const API = api(getClient());
+		const client = getClient();
+		if (client === null || consts === null) return "Client not initialized";
+
+		const API = api(client);
 
 		if (state.asset === -1) return "Please select asset";
 		if (state.action !== "setnft" && !state.isMine)
@@ -633,12 +638,11 @@ const AssetModify = () => {
 		msgMutex.runExclusive(async () =>
 			cDispatch("set_errmsg")(await getErrmsg()));
 	}, [state.asset, state.action, state.recipient, state.newIssuer, state.amount,
-	state.isMine, state.nftRange, state.nftDataType]);
+	state.isMine, state.nftRange, state.nftDataType, consts]);
 
 	const getFee = () => feeMutex.runExclusive(async () => {
 		if (await getErrmsg() !== null) return new N(0);
 
-		const consts = getConstants();
 		const client = getClient();
 		const API = api(client);
 
@@ -697,7 +701,8 @@ const AssetModify = () => {
 			cDispatch("set_fee")(new N(0));
 		});
 	}, [state.asset, state.action, state.recipient, state.newIssuer, state.nftRange,
-	state.nftDataType, state.nftData, state.grantData, state.memo, state.errmsg]);
+	state.nftDataType, state.nftData, state.grantData, state.memo, state.errmsg,
+		consts]);
 
 	const doModify = () => changeMutex.runExclusive(async () => {
 		// Need to validate again
@@ -725,7 +730,6 @@ const AssetModify = () => {
 			if (!c) return;
 		}
 
-		const consts = getConstants();
 		const client = getClient();
 		const API = api(client);
 
@@ -1080,8 +1084,8 @@ const AssetModify = () => {
 			</tr>
 			<tr>
 				<td colSpan={4}>
-					{state.errmsg ? `${CROSS_MARK_SYMBOL} ${state.errmsg}`
-						: `${CHECK_BUTTON_SYMBOL} Estimated fee: ${+state.fee}`}
+					{state.errmsg ? `${SYMBOL_CROSS_MARK} ${state.errmsg}`
+						: `${SYMBOL_CHECK_BUTTON} Estimated fee: ${+state.fee}`}
 					<button style={{ marginLeft: 8 }} onClick={doModify}
 						disabled={state.errmsg !== null}>Change</button>
 				</td>

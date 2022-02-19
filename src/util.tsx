@@ -22,7 +22,8 @@ import Order from './order';
 import Platforms from './platforms';
 
 import {
-	APP_NAME, LAYOUT_NAME, CONF_NAME, SATOSHI, MAX_ACCEPT_FEE, ACCOUNT_LABEL
+	APP_NAME, LAYOUT_NAME, CONF_NAME, SATOSHI, MAX_ACCEPT_FEE, ACCOUNT_LABEL,
+	TYPE_SELL_OFFER
 } from './constants';
 import { defaultLayout, defaultRPCSettings, defaultSettings } from './defaults';
 import { createRawSend } from './raw';
@@ -604,7 +605,7 @@ export async function getAddressAssets(client: typeof Client, propid: number) {
 
 	// Factor in balances that have pending sells
 	const pendingSells = await repeatAsync(API.getPendingTxs, 3)().then(pending =>
-		pending.filter(v => v.type === "DEx Sell Offer"
+		pending.filter(v => v.type_int === TYPE_SELL_OFFER
 			&& (v as DexOrder).propertyid === propid).reduce((map, v) =>
 				map.set(v.sendingaddress, [...(map.get(v.sendingaddress) || []),
 				new N((v as DexOrder).amount).neg()]),
