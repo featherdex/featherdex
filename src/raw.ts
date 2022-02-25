@@ -3,7 +3,9 @@ import Client from 'bitcoin-core';
 
 import api from './api';
 
-import { ACCOUNT_LABEL, OrderAction } from './constants';
+import {
+	ACCOUNT_LABEL, API_RETRIES, API_RETRIES_LARGE, OrderAction
+} from './constants';
 import { repeatAsync, dsum, log } from './util';
 
 async function createRawTxPayload(consts: PlatformConstants, client: typeof Client,
@@ -20,19 +22,20 @@ async function createRawTxPayload(consts: PlatformConstants, client: typeof Clie
 	log().debug(inUTXO)
 	log().debug(`change=${change}`)
 
-	const pretx = await repeatAsync(API.createRawTransaction, 3)({
+	const pretx = await repeatAsync(API.createRawTransaction, API_RETRIES_LARGE)({
 		ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }],
 		outs: [{ [changeAddress]: +change }],
 	});
 
 	let rawtx;
 	if (payload.length <= 76)
-		rawtx = await repeatAsync(API.createRawTxOpReturn, 5)(pretx, payload);
+		rawtx = await
+			repeatAsync(API.createRawTxOpReturn, API_RETRIES)(pretx, payload);
 	else {
 		const newAddress = await
-			repeatAsync(API.getNewAddress, 5)(ACCOUNT_LABEL, "legacy");
-		rawtx = await repeatAsync(API.createRawTxMultisig, 5)(pretx, payload,
-			inUTXO.address, newAddress);
+			repeatAsync(API.getNewAddress, API_RETRIES)(ACCOUNT_LABEL, "legacy");
+		rawtx = await repeatAsync(API.createRawTxMultisig, API_RETRIES)(pretx,
+			payload, inUTXO.address, newAddress);
 	}
 
 	return rawtx;
@@ -42,7 +45,7 @@ export async function createRawSend(consts: PlatformConstants, client: typeof Cl
 	recipient: string, propid: number, amount: N, inUTXO: UTXO, fee: N) {
 	const API = api(client);
 
-	const payload = await repeatAsync(API.createPayloadSend, 5)
+	const payload = await repeatAsync(API.createPayloadSend, API_RETRIES)
 		(propid, amount).catch(_ => {
 			throw new Error("Could not create simple send payload");
 		});
@@ -56,7 +59,7 @@ export async function createRawAccept(consts: PlatformConstants,
 	const API = api(client);
 	const { MIN_CHANGE } = consts;
 
-	const payload = await repeatAsync(API.createPayloadAccept, 5)
+	const payload = await repeatAsync(API.createPayloadAccept, API_RETRIES)
 		(propid, amount).catch(_ => {
 			throw new Error("Could not create dex accept payload");
 		});
@@ -66,13 +69,14 @@ export async function createRawAccept(consts: PlatformConstants,
 	if (change.lt(MIN_CHANGE))
 		throw new Error("Could not create raw accept transaction, fee too high");
 
-	const pretx = await repeatAsync(API.createRawTransaction, 3)
+	const pretx = await repeatAsync(API.createRawTransaction, API_RETRIES_LARGE)
 		({
 			ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }],
 			outs: [{ [inUTXO.address]: +change }, { [seller]: +MIN_CHANGE }],
 		});
 
-	return await repeatAsync(API.createRawTxOpReturn, 3)(pretx, payload);
+	return await
+		repeatAsync(API.createRawTxOpReturn, API_RETRIES_LARGE)(pretx, payload);
 }
 
 export async function createRawPay(consts: PlatformConstants, client: typeof Client,
@@ -86,13 +90,13 @@ export async function createRawPay(consts: PlatformConstants, client: typeof Cli
 
 	if (change.lt(MIN_CHANGE))
 		throw new Error(`UTXO not large enough input=${inUTXO.amount},`
-			+ ` total=${total}, fee=${fee.add(MIN_CHANGE).toDP(8)}`);
+			+ ` total=${total}, fee=${fee}`);
 
 	let outs: RawTxBlueprint["outs"] =
 		[{ [inUTXO.address]: +change }, { [EXODUS_ADDRESS]: +MIN_CHANGE }];
 	outs.push(...orders.map(order => ({ [order.address]: +order.amount.toDP(8) })));
 
-	return await repeatAsync(API.createRawTransaction, 3)({
+	return await repeatAsync(API.createRawTransaction, API_RETRIES_LARGE)({
 		ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }], outs: outs
 	});
 }
@@ -105,7 +109,7 @@ export async function createRawOrder(consts: PlatformConstants,
 	log().debug(`propid=${propid}, action=${action}, fee=${fee},`
 		+ ` quantity=${quantity}, price=${price}`);
 
-	const payload = await repeatAsync(API.createPayloadOrder, 5)
+	const payload = await repeatAsync(API.createPayloadOrder, API_RETRIES)
 		(...[propid, quantity, price, action,
 			...(action === OrderAction.ORDER_CANCEL ? [0, 0] : [])]);
 
@@ -130,12 +134,12 @@ export async function createRawIssuer(consts: PlatformConstants,
 	log().debug(inUTXO)
 	log().debug(`change=${change}`)
 
-	const pretx = await repeatAsync(API.createRawTransaction, 3)({
+	const pretx = await repeatAsync(API.createRawTransaction, API_RETRIES_LARGE)({
 		ins: [{ txid: inUTXO.txid, vout: inUTXO.vout }],
 		outs: [{ [newIssuer]: MIN_CHANGE }],
 	});
 
-	return await repeatAsync(API.createRawTxOpReturn, 5)(pretx, payload);
+	return await repeatAsync(API.createRawTxOpReturn, API_RETRIES)(pretx, payload);
 }
 
 export async function createRawCreate(consts: PlatformConstants,

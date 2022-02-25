@@ -6,7 +6,8 @@ import api from './api';
 import {
 	EMPTY_TX_VSIZE, IN_P2PKH_VSIZE, IN_P2WSH_VSIZE, OUT_P2PKH_VSIZE, OUT_P2WSH_VSIZE,
 	OPRET_ACCEPT_VSIZE, OPRET_SEND_VSIZE, OPRET_ORDER_VSIZE, OPRET_EMPTY_VSIZE,
-	OPRET_ISSUER_VSIZE, MULTISIG_ONE_VSIZE, MULTISIG_TWO_VSIZE, COIN_FEERATE
+	OPRET_ISSUER_VSIZE, MULTISIG_ONE_VSIZE, MULTISIG_TWO_VSIZE, COIN_FEERATE,
+	API_RETRIES_LARGE
 } from './constants';
 import { repeatAsync, dsum, getAddressType, log } from './util';
 
@@ -37,13 +38,13 @@ export async function estimateTxFee(client: typeof Client, rawtx: string, size?:
 	feerate?: N) {
 	const API = api(client);
 	const vsize = size ?? await
-		repeatAsync(API.decodeTransaction, 3)(rawtx).then(v => {
+		repeatAsync(API.decodeTransaction, API_RETRIES_LARGE)(rawtx).then(v => {
 			if (!v.vsize) throw new Error("Could not decode transaction");
 			return new N(v.vsize);
 		});
 
 	const rate = feerate ?? await
-		repeatAsync(API.estimateFee, 3)().catch(_ => COIN_FEERATE);
+		repeatAsync(API.estimateFee, API_RETRIES_LARGE)().catch(_ => COIN_FEERATE);
 
 	return vsize.div(new N("1000")).mul(rate).toDP(8, N.ROUND_CEIL);
 }
@@ -53,8 +54,8 @@ export async function estimateBuyFee(consts: PlatformConstants,
 	const API = api(client);
 	const { MIN_CHANGE } = consts;
 
-	const feerate = await
-		repeatAsync(API.estimateFee, 3)().then(r => new N(r), _ => COIN_FEERATE);
+	const feerate = await repeatAsync(API.estimateFee, API_RETRIES_LARGE)().then(r =>
+		new N(r), _ => COIN_FEERATE);
 
 	// overhead + SW_in + SW_change_out + L_signal_out + OPRET_accept
 	const legAcceptFee = await estimateTxFee(client, "", EMPTY_TX_VSIZE
@@ -83,7 +84,8 @@ export async function estimateBuyFee(consts: PlatformConstants,
 	return {
 		acceptFees, payFee,
 		totalFee: dsum([...acceptFees.values()])
-			.add(payFee).add(MIN_CHANGE.mul(2)).toDP(8),
+			.add(payFee).add(MIN_CHANGE.mul(acceptFees.size))
+			.add(MIN_CHANGE.mul(2)).toDP(8),
 	};
 }
 
@@ -112,8 +114,8 @@ export async function estimateSellFee(consts: PlatformConstants,
 
 async function getSendFee(client: typeof Client) {
 	const API = api(client);
-	const feerate = await
-		repeatAsync(API.estimateFee, 3)().then(r => new N(r), _ => COIN_FEERATE);
+	const feerate = await repeatAsync(API.estimateFee, API_RETRIES_LARGE)().then(r =>
+		new N(r), _ => COIN_FEERATE);
 
 	return {
 		leg_leg: await estimateTxFee(client, "", EMPTY_TX_VSIZE.add(IN_P2PKH_VSIZE)
