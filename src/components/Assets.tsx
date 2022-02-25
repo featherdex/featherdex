@@ -11,7 +11,7 @@ import AppContext from '../contexts/AppContext';
 import Table from './Table';
 import api from '../api';
 
-import { PROPID_COIN } from '../constants';
+import { PROPID_COIN, API_RETRIES, API_RETRIES_LARGE } from '../constants';
 import { handlePromise, repeatAsync, toFormattedAmount } from '../util';
 
 type Data = {
@@ -143,8 +143,8 @@ const Assets = () => {
 		}
 
 		// coin in wallet data
-		const quant = await handlePromise(repeatAsync(API.getCoinBalance, 5)(),
-			`Could not get ${COIN_NAME} balance`);
+		const quant = await handlePromise(repeatAsync(API.getCoinBalance,
+			API_RETRIES)(), `Could not get ${COIN_NAME} balance`);
 		if (quant === null) return;
 
 		const coinData = {
@@ -156,8 +156,8 @@ const Assets = () => {
 
 		assetData.push(coinData);
 
-		const assets = await handlePromise(repeatAsync(API.getWalletAssets, 3)(),
-			"Could not get wallet asset balances");
+		const assets = await handlePromise(repeatAsync(API.getWalletAssets,
+			API_RETRIES_LARGE)(), "Could not get wallet asset balances");
 		if (assets === null) return;
 
 		for (let asset of assets) {

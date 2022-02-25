@@ -18,7 +18,7 @@ import {
 } from '../util';
 import {
 	PROPID_BITCOIN, PROPID_COIN, SATOSHI, SYMBOL_CHECK_BUTTON, SYMBOL_CROSS_MARK,
-	SYMBOL_WARNING, ACCOUNT_LABEL
+	SYMBOL_WARNING, ACCOUNT_LABEL, API_RETRIES, API_RETRIES_LARGE
 } from '../constants';
 
 const C = {
@@ -90,7 +90,7 @@ const AssetSend = () => {
 
 			if (asset === PROPID_COIN) {
 				const balance = await
-					handlePromise(repeatAsync(API.getCoinBalance, 5)(),
+					handlePromise(repeatAsync(API.getCoinBalance, API_RETRIES)(),
 						"Could not get coin balance");
 				if (balance === null) return;
 
@@ -99,10 +99,12 @@ const AssetSend = () => {
 				return;
 			}
 
-			const assetInfo = await handlePromise(repeatAsync(API.getProperty, 5)
-				(asset), `Could not get asset info for property #${asset}`);
-			const balances = await handlePromise(repeatAsync(API.getWalletAssets, 5)
-				(asset), `Could not query wallet balance for property #${asset}`);
+			const assetInfo = await
+				handlePromise(repeatAsync(API.getProperty, API_RETRIES)
+					(asset), `Could not get asset info for property #${asset}`);
+			const balances = await
+				handlePromise(repeatAsync(API.getWalletAssets, API_RETRIES)
+					(asset), `Could not get wallet balance for property #${asset}`);
 			const balance = balances ?
 				balances.find(v => v.propertyid === asset) : null;
 
@@ -142,7 +144,7 @@ const AssetSend = () => {
 		const { COIN_TICKER } = consts;
 
 		const validAddress = await
-			handlePromise(repeatAsync(API.validateAddress, 5)(address),
+			handlePromise(repeatAsync(API.validateAddress, API_RETRIES)(address),
 				`Could not process validation for address ${address}`);
 		if (validAddress === null) msg = "Could not validate address";
 		else if (!validAddress.isvalid) msg = "Invalid address";
@@ -150,8 +152,9 @@ const AssetSend = () => {
 		// Priority, return first
 		if (msg) return msg;
 
-		const balance = await handlePromise(repeatAsync(API.getCoinBalance, 5)(),
-			"Could not query coin balance");
+		const balance = await
+			handlePromise(repeatAsync(API.getCoinBalance, API_RETRIES)(),
+				"Could not query coin balance");
 		if (balance === null) msg = `Could not query ${COIN_TICKER} balance`;
 		else if (fee.gt(balance))
 			msg = `fee ${fee} exceeds ${COIN_TICKER} balance ${balance}`;
@@ -184,7 +187,8 @@ const AssetSend = () => {
 				const bp: RawTxBlueprint =
 					{ ins: [], outs: [{ [EXODUS_ADDRESS]: +amount }] };
 				const pretx = await
-					handlePromise(repeatAsync(API.createRawTransaction, 3)(bp),
+					handlePromise(repeatAsync(API.createRawTransaction,
+						API_RETRIES_LARGE)(bp),
 						"Could not create raw transaction for fee estimation");
 				if (pretx === null) return;
 
@@ -254,7 +258,7 @@ const AssetSend = () => {
 		if (!c) return;
 
 		if (asset === PROPID_COIN) {
-			await handlePromise(repeatAsync(API.sendToAddress, 5)
+			await handlePromise(repeatAsync(API.sendToAddress, API_RETRIES)
 				(address, amount), `Could not send ${amount} to ${address}`);
 			return;
 		}
@@ -387,7 +391,7 @@ const AssetReceive = () => {
 			log().debug(savedAddress)
 
 			const API = api(getClient());
-			const addressInfo = await repeatAsync(API.getAddressInfo, 5)
+			const addressInfo = await repeatAsync(API.getAddressInfo, API_RETRIES)
 				(savedAddress).catch(e => e.code === -1 || e.code === -5 ?
 					false : null);
 			if (addressInfo === null) return;
@@ -401,8 +405,8 @@ const AssetReceive = () => {
 			}
 
 			const addressMap = await
-				handlePromise(repeatAsync(API.listAddressGroupings, 3)(),
-					"Could not list address groupings", arr =>
+				handlePromise(repeatAsync(API.listAddressGroupings,
+					API_RETRIES_LARGE)(), "Could not list address groupings", arr =>
 					arr.flat(1).reduce((map, v) => map.set(v[0], v[1]),
 						new Map<string, number>()));
 			if (addressMap === null) return;
@@ -410,9 +414,8 @@ const AssetReceive = () => {
 			// If we have no addresses, make a new one
 			if (addressMap.size === 0) {
 				log().debug("making new address")
-				const newAddress = await
-					handlePromise(repeatAsync(API.getNewAddress, 5)(ACCOUNT_LABEL),
-						"Could not generate new address");
+				const newAddress = await handlePromise(repeatAsync(API.getNewAddress,
+					API_RETRIES)(ACCOUNT_LABEL), "Could not generate new address");
 				if (newAddress === null) return;
 
 				log().debug(`made new address ${newAddress}`)
@@ -445,8 +448,9 @@ const AssetReceive = () => {
 			if (address === null || address.length === 0) return;
 
 			const API = api(getClient());
-			const utxos = await handlePromise(repeatAsync(API.listUnspent, 3)(),
-				"Could not list unspent for balance check");
+			const utxos = await
+				handlePromise(repeatAsync(API.listUnspent, API_RETRIES_LARGE)(),
+					"Could not list unspent for balance check");
 			if (utxos === null) return;
 
 			log().debug("utxos")
@@ -471,7 +475,7 @@ const AssetReceive = () => {
 
 		log().debug("making new address (regenerate)")
 		const newAddress = await
-			handlePromise(repeatAsync(API.getNewAddress, 5)("featherdex"),
+			handlePromise(repeatAsync(API.getNewAddress, API_RETRIES)("featherdex"),
 				"Could not generate new address");
 		if (newAddress === null) return;
 

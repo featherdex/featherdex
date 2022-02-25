@@ -6,7 +6,7 @@ import AppContext from '../contexts/AppContext';
 import api from '../api';
 import Clock from './Clock';
 
-import { SYMBOL_BITCOIN } from '../constants';
+import { SYMBOL_BITCOIN, API_RETRIES } from '../constants';
 import { repeatAsync, uniqueId, toFormattedAmount } from '../util';
 
 type TickerElementProps = {
@@ -62,10 +62,10 @@ const TickerMarquee = () => {
 		if (client === null || consts === null) return;
 
 		const API = api(client);
-		setCoinRates(await repeatAsync(API.getExchangeRates, 5)(COIN_TICKER)
-			.catch(_ => null));
-		setBTCRates(await repeatAsync(API.getExchangeRates, 5)("BTC")
-			.catch(_ => null));
+		setCoinRates(await repeatAsync(API.getExchangeRates, API_RETRIES)
+			(COIN_TICKER).catch(_ => null));
+		setBTCRates(await repeatAsync(API.getExchangeRates, API_RETRIES)
+			("BTC").catch(_ => null));
 	}, 5000, true);
 
 	const getPrice = (rate: CoinbaseRate, currency: string, places = 2) =>
@@ -100,12 +100,12 @@ const Height = () => {
 
 	useInterval(async () => {
 		const API = api(getClient());
-		setHeight(await repeatAsync(API.getBlockchainInfo, 5)().then(v =>
+		setHeight(await repeatAsync(API.getBlockchainInfo, API_RETRIES)().then(v =>
 			v.blocks, _ => 0));
 	}, 5000, true);
 
 	return <div style={{ fontSize: "10pt" }}>
-		Blockchain Height:
+		Blockchain Height:&nbsp;
 		{toFormattedAmount(height, settings.numformat, 0, "decimal", "none", true)}
 	</div>;
 }

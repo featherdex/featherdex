@@ -8,6 +8,7 @@ import api from '../api';
 import Table from './Table';
 import AssetSearch from './AssetSearch';
 
+import { API_RETRIES, API_RETRIES_LARGE } from '../constants';
 import { handleError, repeatAsync, toFormattedAmount, sendOpenLink } from '../util';
 
 type NFTTableProps = {
@@ -221,13 +222,14 @@ const Info = () => {
 			return;
 		}
 
-		repeatAsync(API.getProperty, 5)(asset).then(v => {
+		repeatAsync(API.getProperty, API_RETRIES)(asset).then(v => {
 			setAssetInfo(v);
 			if (v["non-fungibletoken"])
-				repeatAsync(API.getNFTData, 3)(v.propertyid).catch(_ => {
-					handleError(new Error("Could not query NFT info"));
-					return [];
-				}).then(info => setNFTInfo(info));
+				repeatAsync(API.getNFTData, API_RETRIES_LARGE)
+					(v.propertyid).catch(_ => {
+						handleError(new Error("Could not query NFT info"));
+						return [];
+					}).then(info => setNFTInfo(info));
 			else
 				setNFTInfo([]);
 		}, _ => {

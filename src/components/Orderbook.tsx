@@ -14,7 +14,7 @@ import { TraderState, TraderAction } from './Trade';
 
 import {
 	PROPID_BITCOIN, PROPID_COIN, EMPTY_TX_VSIZE, IN_P2WSH_VSIZE, OUT_P2WSH_VSIZE,
-	OPRET_ORDER_VSIZE
+	OPRET_ORDER_VSIZE, API_RETRIES_LARGE
 } from '../constants';
 
 import {
@@ -73,9 +73,10 @@ const Orderbook = ({ state, dispatch }: OrderbookProps) => {
 			return;
 		}
 
-		const orders = await handlePromise(repeatAsync(API.getExchangeSells, 3)(),
-			"Could not get sell orders on exchange",
-			x => x.filter(v => parseInt(v.propertyid) === state.trade));
+		const orders = await
+			handlePromise(repeatAsync(API.getExchangeSells, API_RETRIES_LARGE)(),
+				"Could not get sell orders on exchange",
+				x => x.filter(v => parseInt(v.propertyid) === state.trade));
 		if (orders === null) return;
 
 		const accepts = await getPendingAccepts(client).catch(e => {

@@ -14,7 +14,9 @@ import AppContext from '../contexts/AppContext';
 import Table from './Table';
 import api from '../api';
 
-import { PROPID_BITCOIN, PROPID_COIN, SYMBOL_REFRESH } from '../constants';
+import {
+	PROPID_BITCOIN, PROPID_COIN, SYMBOL_REFRESH, API_RETRIES
+} from '../constants';
 import {
 	handlePromise, repeatAsync, handleError, toFormattedAmount, sendOpenLink, notify
 } from '../util';
@@ -161,8 +163,9 @@ const Sales = () => {
 		const API = api(client);
 		const { OMNI_START_HEIGHT, COIN_MARKET } = consts;
 
-		const height = await handlePromise(repeatAsync(API.getBlockchainInfo, 5)(),
-			"Could not get blockchain info", v => v.blocks);
+		const height = await
+			handlePromise(repeatAsync(API.getBlockchainInfo, API_RETRIES)(),
+				"Could not get blockchain info", v => v.blocks);
 
 		let tradeData: Data[] = [];
 

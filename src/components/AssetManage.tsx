@@ -10,7 +10,7 @@ import CoinInput from './CoinInput'
 import api from '../api';
 
 import {
-	estimateIssuerFee, estimateGrantFee, handleError, handlePromise, dsum, toUTXO,
+	estimateIssuerFee, estimateGrantFee, handleError, handlePromise, dsum,
 	repeatAsync, log, estimateCreateFee, estimateNFTFee, estimateRevokeFee,
 	fundAddress, notify, signTx, sendTx, waitForTx, sendAlert, sendConfirm,
 	createRawCreate, createRawIssuer, createRawSetNFT, createRawGrant,
@@ -18,7 +18,8 @@ import {
 } from '../util';
 import {
 	PROPID_COIN, SATOSHI, SYMBOL_CHECK_BUTTON, SYMBOL_CROSS_MARK, TYPE_DIVISIBLE,
-	TYPE_INDIVISIBLE, TYPE_NFT, ECOSYSTEM_TEST, ECOSYSTEM_MAIN, ACCOUNT_LABEL
+	TYPE_INDIVISIBLE, TYPE_NFT, ECOSYSTEM_TEST, ECOSYSTEM_MAIN, ACCOUNT_LABEL,
+	API_RETRIES, API_RETRIES_LARGE
 } from '../constants';
 
 const C = {
@@ -285,8 +286,8 @@ const AssetCreate = () => {
 		notify("success", "Created new asset", assetInfo);
 
 		waitForTx(client, sendtx).then(async _ => {
-			const txInfo = await handlePromise(repeatAsync(API.getOmniTransaction, 5)
-				(sendtx), `Could not get omni info for tx ${sendtx}`);
+			const txInfo = await handlePromise(repeatAsync(API.getOmniTransaction,
+				API_RETRIES)(sendtx), `Could not get omni info for tx ${sendtx}`);
 			if (txInfo === null) return;
 
 			refreshAssets();
@@ -524,11 +525,12 @@ const AssetModify = () => {
 
 		const API = api(getClient());
 
-		const assetInfo = await handlePromise(repeatAsync(API.getProperty, 5)
-			(state.asset), `Could not query property info for ID ${state.asset}`);
-		const issuerInfo = await
-			handlePromise(repeatAsync(API.getAddressInfo, 5)(assetInfo.issuer),
-				`Could not query info for address ${assetInfo.issuer}`);
+		const assetInfo = await
+			handlePromise(repeatAsync(API.getProperty, API_RETRIES)(state.asset),
+				`Could not query property info for ID ${state.asset}`);
+		const issuerInfo = await handlePromise(repeatAsync(API.getAddressInfo,
+			API_RETRIES)(assetInfo.issuer),
+			`Could not query info for address ${assetInfo.issuer}`);
 		if (assetInfo === null || issuerInfo === null) return;
 
 		cDispatch("set_mine")(issuerInfo.ismine);
@@ -541,7 +543,7 @@ const AssetModify = () => {
 			cDispatch("set_nftrange")([1, 1]);
 		} else if (assetInfo.managedissuance) {
 			const assetBalance = await
-				handlePromise(repeatAsync(API.getAssetBalance, 5)
+				handlePromise(repeatAsync(API.getAssetBalance, API_RETRIES)
 					(assetInfo.issuer, state.asset),
 					`Could not query asset balance for address ${assetInfo.issuer}`);
 			if (assetBalance === null) return;
@@ -564,8 +566,9 @@ const AssetModify = () => {
 		if (state.action !== "setnft" && !state.isMine)
 			return "Wallet does not control asset";
 
-		const assetInfo = await handlePromise(repeatAsync(API.getProperty, 5)
-			(state.asset), `Could not query property info for ID ${state.asset}`);
+		const assetInfo = await
+			handlePromise(repeatAsync(API.getProperty, API_RETRIES)(state.asset),
+				`Could not query property info for ID ${state.asset}`);
 		if (assetInfo === null) return "Could not query asset info";
 
 		if (state.action === "grant" || state.action === "revoke") {
@@ -574,7 +577,7 @@ const AssetModify = () => {
 
 			if (state.action === "revoke") {
 				const assetBalance = await
-					handlePromise(repeatAsync(API.getAssetBalance, 5)
+					handlePromise(repeatAsync(API.getAssetBalance, API_RETRIES)
 						(assetInfo.issuer, state.asset),
 						"Could not query issuer balance", b => new N(b.balance));
 				if (assetBalance === null) return "Could not query issuer balance";
@@ -584,7 +587,8 @@ const AssetModify = () => {
 			} else {
 				const address = state.recipient;
 				const validAddress = await
-					handlePromise(repeatAsync(API.validateAddress, 5)(address),
+					handlePromise(repeatAsync(API.validateAddress, API_RETRIES)
+						(address),
 						`Could not process validation for address ${address}`);
 				if (validAddress === null)
 					return "Could not validate recipient address";
@@ -592,9 +596,9 @@ const AssetModify = () => {
 					return "Invalid recipient address";
 			}
 		} else if (state.action === "chgissuer") {
-			const validAddress = await
-				handlePromise(repeatAsync(API.validateAddress, 5)(state.newIssuer),
-					`Could not process validation for address ${state.newIssuer}`);
+			const validAddress = await handlePromise(repeatAsync(API.validateAddress,
+				API_RETRIES)(state.newIssuer),
+				`Could not process validation for address ${state.newIssuer}`);
 			if (validAddress === null) return "Could not validate address";
 			else if (!validAddress.isvalid) return "Invalid new issuer address";
 		} else if (state.action === "setnft") {
@@ -604,9 +608,9 @@ const AssetModify = () => {
 			if (min < 0 || max < 0) return "Token IDs out of range";
 			if (max < min) return "End of token range must be >= start";
 
-			const nftRanges = await
-				handlePromise(repeatAsync(API.getNFTRanges, 3)(state.asset),
-					`Could not query NFT ranges for asset ${state.asset}`);
+			const nftRanges = await handlePromise(repeatAsync(API.getNFTRanges,
+				API_RETRIES_LARGE)(state.asset),
+				`Could not query NFT ranges for asset ${state.asset}`);
 			if (nftRanges === null) return "Could not query NFT ranges";
 
 			if (nftRanges.length === 0) return "No NFTs available";
@@ -621,7 +625,7 @@ const AssetModify = () => {
 
 					const holderAddress = nrange.address;
 					const addressInfo = await
-						handlePromise(repeatAsync(API.getAddressInfo, 5)
+						handlePromise(repeatAsync(API.getAddressInfo, API_RETRIES)
 							(holderAddress), "Could not query address info");
 					if (addressInfo === null) return "Could not query address info";
 					if (!addressInfo.ismine)
@@ -646,7 +650,8 @@ const AssetModify = () => {
 		const client = getClient();
 		const API = api(client);
 
-		const assetInfo = await repeatAsync(API.getProperty, 5)(state.asset);
+		const assetInfo = await
+			repeatAsync(API.getProperty, API_RETRIES)(state.asset);
 
 		let fee;
 		switch (state.action) {
@@ -660,8 +665,8 @@ const AssetModify = () => {
 					fee = (await estimateNFTFee(consts, client, state.nftData,
 						consts.FEE_ADDRESS, assetInfo.issuer)).totalFee;
 				else {
-					const nftRanges = await
-						repeatAsync(API.getNFTRanges, 3)(state.asset);
+					const nftRanges = await repeatAsync(API.getNFTRanges,
+						API_RETRIES_LARGE)(state.asset);
 
 					// Collect fees for the relevant NFT ranges
 					let nftFees = [] as Promise<N>[];
@@ -734,7 +739,7 @@ const AssetModify = () => {
 		const API = api(client);
 
 		const assetInfo = await
-			handlePromise(repeatAsync(API.getProperty, 5)(state.asset),
+			handlePromise(repeatAsync(API.getProperty, API_RETRIES)(state.asset),
 				`Could not query property info for ID ${state.asset}`);
 		if (assetInfo === null) return;
 
@@ -776,7 +781,7 @@ const AssetModify = () => {
 					log().debug("enter setnft issuer")
 
 					const sender = await
-						handlePromise(repeatAsync(API.getNewAddress, 5)
+						handlePromise(repeatAsync(API.getNewAddress, API_RETRIES)
 							(ACCOUNT_LABEL),
 							"Could not get new address for funding NFT transaction");
 					if (sender === null) return;
@@ -812,7 +817,8 @@ const AssetModify = () => {
 					log().debug("enter setnft holder")
 
 					const nftRanges = await
-						handlePromise(repeatAsync(API.getNFTRanges, 3)(state.asset),
+						handlePromise(repeatAsync(API.getNFTRanges,
+							API_RETRIES_LARGE)(state.asset),
 							`Could not query NFT ranges for asset ${state.asset}`);
 					if (nftRanges === null) return "Could not query NFT ranges";
 

@@ -21,7 +21,7 @@ import {
 import {
 	SATOSHI, TRADE_FEERATE, MIN_TRADE_FEE, PROPID_BITCOIN, PROPID_COIN,
 	ACCOUNT_LABEL, BITTREX_TRADE_FEERATE, SYMBOL_CROSS_MARK, SYMBOL_CHECK_BUTTON,
-	OrderAction
+	API_RETRIES, API_RETRIES_LARGE, OrderAction
 } from '../constants';
 
 export type TraderState = {
@@ -227,10 +227,11 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		if (state.trade === PROPID_COIN) {
 			if (settings.apikey.length === 0 || settings.apisecret.length === 0)
 				return;
-			const balance = await handlePromise(repeatAsync(API.getBittrexBalance, 5)
-				(settings.apikey, settings.apisecret, state.buysell === "buy" ?
-					COIN_BASE_TICKER : COIN_TICKER),
-				"Could not get Bittrex balance");
+			const balance = await
+				handlePromise(repeatAsync(API.getBittrexBalance, API_RETRIES)
+					(settings.apikey, settings.apisecret, state.buysell === "buy" ?
+						COIN_BASE_TICKER : COIN_TICKER),
+					"Could not get Bittrex balance");
 
 			cDispatch("set_available")(balance !== null ?
 				new N(balance.available) : new N(0));
@@ -239,14 +240,16 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 		let balance = null;
 		if (state.buysell === "buy")
-			balance = await handlePromise(repeatAsync(API.getCoinBalance, 5)(),
-				"Could not get coin balance");
+			balance = await
+				handlePromise(repeatAsync(API.getCoinBalance, API_RETRIES)(),
+					"Could not get coin balance");
 		else
-			balance = await handlePromise(repeatAsync(API.getWalletAssets, 3)(),
-				"Could not get wallet balances", arr => {
-					const entry = arr.find(v => v.propertyid === state.trade);
-					return entry !== undefined ? entry.balance : null;
-				});
+			balance = await
+				handlePromise(repeatAsync(API.getWalletAssets, API_RETRIES_LARGE)(),
+					"Could not get wallet balances", arr => {
+						const entry = arr.find(v => v.propertyid === state.trade);
+						return entry !== undefined ? entry.balance : null;
+					});
 
 		cDispatch("set_available")(balance !== null ? new N(balance) : new N(0));
 	});
@@ -294,8 +297,8 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 		// Omni trades
 		if (state.base === PROPID_COIN) {
 			if (state.buysell === "buy") {
-				const coins = await handlePromise(repeatAsync
-					(API.getCoinBalance, 5)(), "Could not get wallet balance");
+				const coins = await handlePromise(repeatAsync(API.getCoinBalance,
+					API_RETRIES)(), "Could not get wallet balance");
 				if (coins === null) return `Could not query ${COIN_TICKER} balance`;
 
 				// case: insufficient balance, coin
@@ -305,7 +308,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 						+ ` ${state.total.toFixed(8)} ${COIN_TICKER}`;
 			} else {
 				const assets = await
-					handlePromise(repeatAsync(API.getWalletAssets, 5)(),
+					handlePromise(repeatAsync(API.getWalletAssets, API_RETRIES)(),
 						"Could not get wallet assets");
 				if (assets === null) return "Could not query wallet assets";
 
@@ -519,7 +522,7 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 			logger.debug("chainSends")
 			logger.debug(chainSends)
 
-			address = await handlePromise(repeatAsync(API.getNewAddress, 5)
+			address = await handlePromise(repeatAsync(API.getNewAddress, API_RETRIES)
 				(ACCOUNT_LABEL), "Could not create new address for sell order");
 			if (address === null) return;
 
@@ -598,10 +601,11 @@ const Trader = ({ state, dispatch }: TraderProps) => {
 
 		if (propid < PROPID_BITCOIN) return;
 
-		repeatAsync(API.getProperty, 5)(propid).then(p => p.divisible, _ => {
-			handleError(new Error("Could not query property info"), "error");
-			return true;
-		}).then(divisible => cDispatch("set_divisible")(divisible));
+		repeatAsync(API.getProperty, API_RETRIES)(propid).then(p => p.divisible,
+			_ => {
+				handleError(new Error("Could not query property info"), "error");
+				return true;
+			}).then(divisible => cDispatch("set_divisible")(divisible));
 	}
 
 	const setMax = () => {
@@ -766,7 +770,7 @@ const C = {
 		Trader: styled.div`
 		height: 100%;
 		box-sizing: border-box;
-		flex-basis: 470px;`,
+		flex-basis: 475px;`,
 		Body: styled.div`padding: 4px 8px 0 8px;`,
 		Inputs: styled.table`
 		width: 100%;
