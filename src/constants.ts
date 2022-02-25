@@ -59,6 +59,9 @@ export const MULTISIG_ONE_VSIZE = new N(81);
 export const MULTISIG_TWO_VSIZE = new N(115);
 
 export const API_RETRIES = 5;
+export const API_RETRIES_LARGE = 3;
+
+export const BATCH_SIZE = 1000;
 
 export const CHART_MINUTE_DAYS = 10;
 export const CHART_HOUR_MONTHS = 6;

@@ -11,13 +11,12 @@ import { UTCTimestamp } from 'lightweight-charts';
 import { Menu, Item, useContextMenu, theme } from 'react-contexify';
 
 import AppContext from '../contexts/AppContext';
-import useTimeCache from '../timecache';
 import Table from './Table';
 import api from '../api';
 
-import { PROPID_BITCOIN, PROPID_COIN } from '../constants';
+import { PROPID_BITCOIN, PROPID_COIN, API_RETRIES_LARGE } from '../constants';
 import {
-	handlePromise, repeatAsync, handleError, toFormattedAmount, sendOpenLink, notify
+	repeatAsync, handleError, toFormattedAmount, sendOpenLink, notify
 } from '../util';
 
 type Data = {
@@ -32,15 +31,12 @@ type Data = {
 };
 
 const History = () => {
-	const { consts, settings, getClient } = React.useContext(AppContext);
+	const {
+		consts, settings, getClient, refreshTrades
+	} = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
 
 	const { show } = useContextMenu();
-
-	const myTradesCache = useTimeCache((ts, te) => {
-		const client = getClient();
-		return !!client ? api(client).listMyAssetTrades(ts, te) : null;
-	}, t => t.block);
 
 	const onContextMenu = (event: React.MouseEvent) => {
 		event.preventDefault();
@@ -159,39 +155,68 @@ const History = () => {
 		if (client === null || consts === null) return;
 
 		const API = api(client);
-		const { OMNI_START_HEIGHT, COIN_MARKET } = consts;
+		const { COIN_MARKET } = consts;
 
-		const blockHeight = await
-			handlePromise(repeatAsync(API.getBlockchainInfo, 5)(),
-				"Could not get blockchain info", v => v.blocks);
+		// oldest to newest here
+		let myTrades = await refreshTrades().then(trades =>
+			trades.filter(trade => trade.isMine), e => {
+				handleError(e, "error");
+				return null as AssetTrade[];
+			});
+		if (myTrades === null) return;
 
-		// Second check needed for constants not updating in time
-		if (blockHeight === null || blockHeight < OMNI_START_HEIGHT) return;
+		// Open sell orders on exchange
+		const dexSells: Record<string, DexSell> = await
+			repeatAsync(API.getExchangeSells, API_RETRIES_LARGE)().then(sells =>
+				Object.assign({}, ...sells.map(s => ({ [s.txid]: s }))), e => {
+					handleError(e, "error");
+					return null;
+				});
+		if (dexSells === null) return;
 
-		let myTrades =
-			[...await myTradesCache.refresh(OMNI_START_HEIGHT, blockHeight)];
-		myTrades.reverse();
+		// operate on trades in reverse order
+		let historyData = myTrades.reduceRight(({ cancels, tradeData }, trade) => {
+			// Skip open sells
+			if (dexSells[trade.txid]) return { cancels, tradeData };
+			
+			// Skip and record cancellations
+			if (trade.status === "CANCELED")
+				return {
+					cancels: cancels.set(trade.address,
+						(cancels.get(trade.address) || 0) + 1),
+					tradeData
+				};
 
-		const historyData: Data[] = myTrades.filter((v: AssetTrade) =>
-			v.status === "CLOSED"
-			|| v.status === "CANCELLED").map((v: AssetTrade) => ({
-				time: { time: v.time, txid: v.txid },
-				status: v.status,
-				idBuy: v.idBuy,
-				idSell: v.idSell,
-				quantity: +v.quantity,
-				price: +v.amount.div(v.quantity).toDP(8),
-				fee: +v.fee,
-				total: +v.amount.add(v.fee),
-			}));
+			let cancel = false;
+			if (cancels.get(trade.address)) {
+				cancel = true;
+				cancels.set(trade.address, cancels.get(trade.address) - 1);
+			}
+
+			tradeData.push({
+				time: { time: trade.time, txid: trade.txid },
+				status: cancel ? "CANCELED" : trade.status,
+				idBuy: trade.idBuy,
+				idSell: trade.idSell,
+				quantity: +trade.quantity,
+				price: +trade.amount.div(trade.quantity).toDP(8),
+				fee: +trade.fee,
+				total: +trade.amount.add(trade.fee),
+			});
+
+			return { cancels, tradeData };
+		}, {
+			cancels: new Map<string, number>(),
+			tradeData: [] as Data[],
+		}).tradeData;
 
 		let bittrexData: Data[] = [];
-
-		if (settings.apikey.length > 0 && settings.apisecret.length > 0) {
-			bittrexData = (await API.getBittrexHistory(settings.apikey,
-				settings.apisecret, COIN_MARKET).catch((err): BittrexOrder[] => {
-					handleError(err);
-					return [];
+		const apiKey = settings.apikey, apiSecret = settings.apisecret;
+		if (apiKey.length > 0 && apiSecret.length > 0) {
+			bittrexData = (await repeatAsync(API.getBittrexHistory,
+				API_RETRIES_LARGE)(apiKey, apiSecret, COIN_MARKET).catch(e => {
+					handleError(e, "error");
+					return [] as BittrexOrder[];
 				})).map(v => ({
 					time: {
 						time: Math.floor(DateTime.fromISO(v.closedAt)

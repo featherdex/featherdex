@@ -8,6 +8,8 @@ import Client from 'bitcoin-core';
 import ReactNotification from 'react-notifications-component';
 import createRBTree from 'functional-red-black-tree';
 import N from 'decimal.js';
+import path from 'path';
+import getAppDataPath from 'appdata-path';
 
 import { ipcRenderer } from 'electron';
 import { DateTime, Duration } from 'luxon';
@@ -16,6 +18,7 @@ import { Layout, Model, TabNode } from 'flexlayout-react';
 import { Mutex } from 'async-mutex';
 
 import api from './api';
+import TradesDB from './tradesdb';
 import Order from './order';
 import Assets from './components/Assets';
 import Downloads from './components/Download';
@@ -34,7 +37,9 @@ import AssetManage from './components/AssetManage';
 import AppContext from './contexts/AppContext';
 
 import { TimeCache } from './timecache';
-import { PROPID_BITCOIN, PROPID_COIN } from './constants';
+import {
+	APP_NAME, PROPID_BITCOIN, PROPID_COIN, API_RETRIES, API_RETRIES_LARGE
+} from './constants';
 import {
 	repeatAsync, readLayout, readSettings, writeSettings, readRPCConf, writeLayout,
 	isNumber, isBoolean, parseBoolean, handlePromise, toCandle, tickersEqual,
@@ -96,8 +101,10 @@ class App extends React.PureComponent<AppProps, AppState> {
 	tickers = new Map<number, Ticker>();
 	tradesCache = new TimeCache((s, e) => {
 		const client = this.getClient();
-		return !!client ? api(client).listAssetTrades(s, e) : null
+		return !!this.state.consts && !!client && this.tradesDB ?
+			this.tradesDB.refresh(this.state.consts, client, s, e) : null
 	}, t => t.block);
+	tradesDB;
 
 	genMutex = new Mutex();
 
@@ -114,6 +121,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 			username: iRPCSettings.rpcuser,
 			password: iRPCSettings.rpcpassword,
 		});
+
+		this.tradesDB = new TradesDB(path.join(getAppDataPath(APP_NAME), 'tx.db'));
 
 		this.methods = {
 			getClient: this.getClient,
@@ -154,9 +163,8 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 	componentDidMount() {
 		this.alive = true;
-		this.updateTicker();
 
-		(async () => {
+		const init = async () => {
 			const up = await api(this.client).isDaemonUp();
 
 			if (!up) {
@@ -164,21 +172,33 @@ class App extends React.PureComponent<AppProps, AppState> {
 					+ "please make sure it is running and that the coin "
 					+ "config path in this app's settings is correct");
 				this.openSettings();
-				return;
+				return false;
 			}
 			const consts = await constants(this.client).catch(e => {
 				handleError(e, "error");
 				return null;
 			});
-			if (consts === null) return;
+			if (consts === null) return false;
 
-			this.setState({ consts }, () => { this.genAssetList(); });
-		})();
+			this.tradesDB.init(consts).catch(e => handleError(e, "error"));
+
+			this.setState({ consts }, () => {
+				this.genAssetList();
+				this.updateTicker();
+			});
+		};
+
+		init().then(v => {
+			if (!v) this.updateTicker(); // start the update loop anyways
+		});
 	}
 
 	componentWillUnmount() {
 		clearInterval(this.genAsset);
 		clearInterval(this.clearStale);
+
+		if (this.tradesDB && this.tradesDB.ready()) this.tradesDB.finish();
+
 		this.alive = false;
 	}
 
@@ -210,11 +230,20 @@ class App extends React.PureComponent<AppProps, AppState> {
 	}
 
 	refreshTrades = async () => {
+		log().debug("entering refreshTrades")
+
 		const consts = this.state.consts;
-		if (consts === null) return [];
+		if (consts === null || this.client === null) return [];
+
+		// Try starting the DB again...
+		if (!this.tradesDB.ready())
+			await this.tradesDB.init(consts).catch(e => handleError(e, "error"));
+
+		if (!this.tradesDB.ready()) return [];
 
 		const { OMNI_START_HEIGHT } = consts;
-		const height = (await api(this.client).getBlockchainInfo()).blocks;
+		const height = await repeatAsync(api(this.client).getBlockchainInfo,
+			API_RETRIES)().then(v => v.blocks);
 
 		return this.tradesCache.refresh(OMNI_START_HEIGHT, height);
 	}
@@ -230,15 +259,17 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 		const { COIN_NAME, COIN_MARKET } = this.state.consts;
 
-		let tickerData = await handlePromise(repeatAsync(API.getCoinTicker, 5)
-			(COIN_MARKET), `Could not get ${COIN_NAME} ticker data`);
+		let tickerData = await
+			handlePromise(repeatAsync(API.getCoinTicker, API_RETRIES)(COIN_MARKET),
+				`Could not get ${COIN_NAME} ticker data`);
 		if (tickerData === null) return;
 
 		let marketData =
 			new Map<number, Ticker>([[1, { market: COIN_MARKET, ...tickerData }]]);
 
-		const dexsells = await handlePromise(repeatAsync(API.getExchangeSells, 3)(),
-			"Could not get open exchange orders");
+		const dexsells = await
+			handlePromise(repeatAsync(API.getExchangeSells, API_RETRIES_LARGE)(),
+				"Could not get open exchange orders");
 		if (dexsells === null) return;
 
 		const allTrades: AssetTrade[] = await this.refreshTrades().catch(e => {
@@ -310,10 +341,11 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 		const API = api(this.client);
 
-		const list = await handlePromise(repeatAsync(API.listProperties, 3)(),
-			"Could not list properties for asset list generation", data =>
-			proplist.concat(data.slice(2).map(x =>
-				({ id: x.propertyid, name: `(${x.propertyid}) ${x.name}` }))));
+		const list = await
+			handlePromise(repeatAsync(API.listProperties, API_RETRIES_LARGE)(),
+				"Could not list properties for asset list generation", data =>
+				proplist.concat(data.slice(2).map(x =>
+					({ id: x.propertyid, name: `(${x.propertyid}) ${x.name}` }))));
 		if (list === null) return;
 
 		this.setState(oldState => {
@@ -428,10 +460,14 @@ class App extends React.PureComponent<AppProps, AppState> {
 				}));
 		if (clientSettings !== null) {
 			this.client = new Client(clientSettings);
+
 			const consts = await constants(this.client).catch(e => {
 				handleError(e, "error");
 				return null;
 			});
+
+			this.tradesDB.init(consts).catch(e => handleError(e, "error"));
+
 			if (consts !== null)
 				this.setState({ consts }, () => { this.genAssetList(); });
 		}

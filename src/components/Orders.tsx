@@ -12,19 +12,18 @@ import { Menu, Item, useContextMenu, theme } from 'react-contexify';
 
 import AppContext from '../contexts/AppContext';
 import Table from './Table';
-import useTimeCache from '../timecache';
 import api from '../api';
 
 import {
 	PROPID_BITCOIN, PROPID_COIN, EMPTY_TX_VSIZE, IN_P2PKH_VSIZE, IN_P2WSH_VSIZE,
-	OUT_P2PKH_VSIZE, OUT_P2WSH_VSIZE, OPRET_ORDER_VSIZE, TYPE_SELL_OFFER, OrderAction
+	OUT_P2PKH_VSIZE, OUT_P2WSH_VSIZE, OPRET_ORDER_VSIZE, TYPE_SELL_OFFER,
+	API_RETRIES, API_RETRIES_LARGE, OrderAction
 } from '../constants';
 import {
 	handleError, handlePromise, repeatAsync, waitForTx, createRawOrder,
 	estimateTxFee, fundAddress, signTx, sendTx, toFormattedAmount, toTradeInfo,
 	getAddressType, notify, sendAlert, sendOpenLink, log
 } from '../util';
-import { Queue } from '../queue';
 
 export type Data = {
 	cancel: JSX.Element | string,
@@ -41,18 +40,11 @@ export type Data = {
 
 const Orders = () => {
 	const {
-		consts, settings, getClient, getPendingOrders
+		consts, settings, getClient, getPendingOrders, refreshTrades
 	} = React.useContext(AppContext);
 	const [data, setData] = React.useState<Data[]>([]);
-	const [active, setActive] = React.useState<string[]>([]);
-	const cancelledOrders = React.useMemo(() => new Queue<string>(), []);
 
 	const { show } = useContextMenu();
-
-	const myTradesCache = useTimeCache((ts, te) => {
-		const client = getClient();
-		return !!client ? api(client).listMyAssetTrades(ts, te) : null
-	}, t => t.block);
 
 	const onContextMenu = (event: React.MouseEvent<HTMLSpanElement, MouseEvent>) => {
 		event.preventDefault();
@@ -229,7 +221,6 @@ const Orders = () => {
 		}
 
 		waitForTx(client, canceltx).then(_ => {
-			cancelledOrders.push(trade.txid);
 			notify("success", "Cancelled order",
 				`Cancelled order ${toTradeInfo(consts, trade)}`);
 		});
@@ -242,15 +233,16 @@ const Orders = () => {
 		if (client === null || consts === null) return;
 
 		const API = api(client);
-		const { OMNI_START_HEIGHT, COIN_MARKET } = consts;
+		const { COIN_MARKET } = consts;
 
 		const blockHeight = await
-			handlePromise(repeatAsync(API.getBlockchainInfo, 5)(),
+			handlePromise(repeatAsync(API.getBlockchainInfo, API_RETRIES)(),
 				"Could not get blockchain info").then(v => v.blocks);
 		if (blockHeight === null) return;
 
-		let pendingTxs = await handlePromise(repeatAsync(API.getPendingTxs, 3)(),
-			"Could not get pending transactions");
+		let pendingTxs = await
+			handlePromise(repeatAsync(API.getPendingTxs, API_RETRIES_LARGE)(),
+				"Could not get pending transactions");
 		if (pendingTxs === null) pendingTxs = [];
 
 		const pendingCancels: Record<string, boolean> =
@@ -279,25 +271,45 @@ const Orders = () => {
 			};
 		});
 
-		const oldCancelled = await cancelledOrders.clear();
-		let myTrades = [...await myTradesCache.refresh(OMNI_START_HEIGHT,
-			blockHeight, trade => oldCancelled.oldQueueMap.has(trade.txid))];
-		myTrades.reverse();
+		// Open sell orders on exchange
+		const dexSells: Record<string, DexSell> = await
+			repeatAsync(API.getExchangeSells, API_RETRIES_LARGE)().then(sells =>
+				Object.assign({}, ...sells.map(s => ({ [s.txid]: s }))), e => {
+					handleError(e, "error");
+					return null;
+				});
+		if (dexSells === null) return;
 
-		const historyData: Data[] = myTrades.filter((v: AssetTrade) =>
-			v.status === "OPEN").map((v: AssetTrade) =>
-			({
-				cancel: <a href="#" onClick={() => sendCancel(v)}> Cancel</a>,
-				time: { time: v.time, txid: v.txid },
-				status: pendingCancels[v.address] ? "CANCELING" : v.status,
-				idBuy: v.idBuy,
-				idSell: v.idSell,
-				quantity: +v.quantity,
-				remaining: +v.remaining,
-				price: +v.amount.div(v.quantity),
-				fee: +v.fee,
-				total: +v.amount.add(v.fee),
-			}));
+		let myTrades = await refreshTrades().then(trades => trades.filter(trade =>
+			trade.isMine && !!dexSells[trade.txid]).reverse().map(trade => {
+				const sell = dexSells[trade.txid];
+				const remaining = new N(sell.amountavailable);
+
+				return {
+					...trade,
+					status: "OPEN",
+					remaining,
+					amount: remaining.mul(new N(sell.unitprice)).toDP(8),
+				};
+			}), e => {
+				handleError(e, "error");
+				return null as AssetTrade[];
+			})
+		if (myTrades === null) return;
+
+		const historyData: Data[] = myTrades.map(v =>
+		({
+			cancel: <a href="#" onClick={() => sendCancel(v)}> Cancel</a>,
+			time: { time: v.time, txid: v.txid },
+			status: pendingCancels[v.address] ? "CANCELING" : v.status,
+			idBuy: v.idBuy,
+			idSell: v.idSell,
+			quantity: +v.quantity,
+			remaining: +v.remaining,
+			price: +v.amount.div(v.quantity),
+			fee: +v.fee,
+			total: +v.amount.add(v.fee),
+		}));
 
 		let bittrexData: Data[] = [];
 
@@ -309,10 +321,10 @@ const Orders = () => {
 				})).map((v: BittrexOrder) =>
 				({
 					cancel: <a href="#" onClick={() =>
-						handlePromise(repeatAsync(API.cancelBittrexOrder, 3)
-							(settings.apikey, settings.apisecret, v.id)
-							.then(o => notify("success", "Cancelled order",
-								toTradeInfo(consts, o))),
+						handlePromise(repeatAsync(API.cancelBittrexOrder,
+							API_RETRIES_LARGE)(settings.apikey, settings.apisecret,
+								v.id).then(o => notify("success", "Cancelled order",
+									toTradeInfo(consts, o))),
 							"Failed to cancel Bittrex order "
 							+ toTradeInfo(consts, v))
 					}>Cancel</a>,
@@ -332,18 +344,6 @@ const Orders = () => {
 
 		setData(pendingData.concat(historyData).concat(bittrexData)
 			.sort((a, b) => b.time.time - a.time.time));
-
-		// Clear out old filled orders
-		const dexTXs = await handlePromise(repeatAsync(API.getExchangeSells, 3)(),
-			"Could not get active sells for clearing out old filled orders", arr =>
-			arr.map(v => v.txid));
-
-		setActive(oldActive => {
-			const newMap = dexTXs.reduce((map, v) =>
-				map.set(v, true), new Map<string, boolean>());
-			cancelledOrders.push(...oldActive.filter(v => !newMap.has(v)));
-			return dexTXs;
-		});
 	}
 
 	React.useEffect(() => { refreshData(); }, [settings]);

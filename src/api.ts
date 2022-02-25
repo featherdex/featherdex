@@ -11,9 +11,8 @@ const Client = require('bitcoin-core');
 
 import {
 	COINBASE_API_ENDPOINT, BITTREX_API_ENDPOINT, COIN_FEERATE, MIN_ACCEPT_FEE,
-	BLOCK_WAIT, PAY_BLOCK_LIMIT, PROPID_COIN, TYPE_ACCEPT_OFFER, TYPE_SELL_OFFER
+	BLOCK_WAIT, PAY_BLOCK_LIMIT, TYPE_ACCEPT_OFFER, TYPE_SELL_OFFER
 } from './constants';
-import { log } from './util';
 
 const api = (client: typeof Client) => {
 	function API() { };
@@ -84,14 +83,6 @@ const api = (client: typeof Client) => {
 					return v;
 				});
 	};
-
-	const batch = async (commands: { method: string, parameters: any[] }[],
-		batchSize: number) => {
-		let batches = [];
-		for (let i = 0; i < commands.length; i += batchSize)
-			batches.push(...await client.command(commands.slice(i, i + batchSize)));
-		return batches;
-	}
 
 	API.isDaemonUp = () => client.command("uptime")
 		.then((_: any) => true, (_: Error) => false);
@@ -236,7 +227,7 @@ const api = (client: typeof Client) => {
 	API.listTransactions =
 		(startblock?: number, endblock?: number): Promise<(OmniTx & BlockInfo)[]> =>
 			client.command("omni_listtransactions",
-				...optArgParse("*", 99999, 0, startblock, endblock));
+				...optArgParse("*", 9999999, 0, startblock, endblock));
 	API.listAddressGroupings = (): Promise<any[][][]> =>
 		client.command("listaddressgroupings");
 	API.listUnspent = (filteraddrs = [] as string[]): Promise<UTXO[]> =>
@@ -274,134 +265,6 @@ const api = (client: typeof Client) => {
 					calcTotalOut(w.vout)).reduce((pv, v) => pv + v));
 
 		return totalIn - totalOut;
-	};
-
-	API.listAssetTrades = async (startblock: number, endblock: number):
-		Promise<AssetTrade[]> => {
-		log().debug(`listAssetTrades startblock=${startblock} endblock=${endblock}`);
-
-		const allTXids: string[] = await
-			client.command("omni_listblockstransactions", startblock, endblock);
-
-		log().debug(`querying ${allTXids.length} transactions`)
-
-		const allOmniTXs: (OmniTx & BlockInfo)[] = await batch(allTXids.map(hash =>
-			({ method: "omni_gettransaction", parameters: [hash] })), 1000);
-
-		return allOmniTXs.filter(v => v.type === "DEx Purchase").flatMap(v =>
-			(v as DexPurchase & BlockInfo).purchases.filter(p =>
-				p.valid).map((p: Purchase): AssetTrade =>
-				({
-					time: v.blocktime as UTCTimestamp,
-					txid: v.txid,
-					block: v.block,
-					status: "CLOSED",
-					idBuy: p.propertyid,
-					idSell: PROPID_COIN, // currently only accept base coin
-					quantity: new N(p.amountbought),
-					remaining: new N(0),
-					amount: new N(p.amountpaid),
-					fee: new N(0), // unused
-				}))).sort((a, b) => a.time - b.time);
-	};
-
-	API.listMyAssetTrades = async (startblock?: number, endblock?: number):
-		Promise<AssetTrade[]> => {
-		const txs = await API.listTransactions(startblock, endblock);
-
-		const allTXFees: { [k: string]: N } = Object.assign({},
-			...(await client.command(txs.map(otx =>
-			({
-				method: "gettransaction",
-				parameters: [otx.txid]
-			}))) as Tx[]).map(tx => ({ [tx.txid]: new N(tx.fee || 0) })));
-
-		const buyTXs = txs.filter(v =>
-			v.type === "DEx Purchase"
-			&& allTXFees[v.txid] !== undefined) as (DexPurchase & BlockInfo)[];
-		const sellTXs = txs.filter(v =>
-			v.type_int === TYPE_SELL_OFFER && v.valid) as (DexOrder & BlockInfo)[];
-		const dexsells: Record<string, DexSell> = Object.assign({},
-			...(await API.getExchangeSells()).map(s => ({ [s.txid]: s })));
-
-		let buys: AssetTrade[] = buyTXs.flatMap(v =>
-			v.purchases.filter((purchase: Purchase) =>
-				purchase.valid).map((purchase: Purchase) =>
-				({
-					time: v.blocktime as UTCTimestamp,
-					txid: v.txid,
-					block: v.block,
-					status: "CLOSED",
-					idBuy: purchase.propertyid,
-					idSell: PROPID_COIN,
-					quantity: new N(purchase.amountbought),
-					remaining: new N(0),
-					amount: new N(purchase.amountpaid),
-					fee: allTXFees[v.txid].neg(),
-				})));
-
-		let cancelledSells: Record<number, boolean> = {};
-		{
-			let sellSet: Record<string, number> = {};
-
-			for (let i = sellTXs.length - 1; i >= 0; i--) {
-				const dexsell = dexsells[sellTXs[i].txid];
-				if (dexsell) continue;
-
-				const orderAddr = sellTXs[i].sendingaddress;
-
-				if (sellTXs[i].action === "cancel") {
-					if (sellSet[orderAddr] === null) continue;
-
-					cancelledSells[sellSet[orderAddr]] = true;
-					sellSet[orderAddr] = null;
-				} else if (sellTXs[i].action === "new")
-					sellSet[orderAddr] = i;
-			}
-		}
-
-		let sells: AssetTrade[] = [];
-		for (let i = 0; i < sellTXs.length; i++) {
-			const tx = sellTXs[i];
-			const dexsell = dexsells[tx.txid];
-
-			if (tx.action === "cancel") continue;
-
-			if (dexsell) {
-				const remaining = new N(dexsell.amountavailable);
-				sells.push({
-					address: dexsell.seller,
-					time: tx.blocktime as UTCTimestamp,
-					txid: tx.txid,
-					block: tx.block,
-					status: "OPEN",
-					idBuy: PROPID_COIN,
-					idSell: tx.propertyid,
-					quantity: new N(tx.amount),
-					remaining: remaining,
-					amount: remaining.mul(new N(dexsell.unitprice)).toDP(8),
-					fee: allTXFees[tx.txid],
-				});
-			} else {
-				const amount = new N(Object.entries(tx).filter(([k, _]) =>
-					k.endsWith("desired"))[0][1] as string ?? 0);
-
-				sells.push({
-					time: tx.blocktime as UTCTimestamp,
-					txid: tx.txid,
-					block: tx.block,
-					status: cancelledSells[i] ? "CANCELLED" : "CLOSED",
-					idBuy: PROPID_COIN,
-					idSell: tx.propertyid,
-					quantity: new N(tx.amount),
-					remaining: new N(0),
-					amount: amount,
-					fee: allTXFees[tx.txid],
-				});
-			}
-		}
-
-		return buys.concat(sells).sort((txa, txb) => txa.time - txb.time);
 	};
 
 	API.getNFTRanges = (propid: number): Promise<NFTRange[]> =>

@@ -2,6 +2,7 @@ import React from 'react';
 
 import { Mutex } from 'async-mutex';
 
+import { API_RETRIES } from './constants';
 import { repeatAsync } from './util';
 
 const useTimeCache = <T>(requestCallback: (timeStart: number,
@@ -42,8 +43,8 @@ const useTimeCache = <T>(requestCallback: (timeStart: number,
 
 		// Append data before time range
 		if (timeStart < state.timeLast.start) {
-			const req: T[] = await repeatAsync(requestCallback, 5)(timeStart,
-				Math.min(timeEnd, state.timeLast.start - 1)).catch(e => {
+			const req: T[] = await repeatAsync(requestCallback, API_RETRIES)
+				(timeStart, Math.min(timeEnd, state.timeLast.start - 1)).catch(e => {
 					release();
 					throw e;
 				});
@@ -55,7 +56,7 @@ const useTimeCache = <T>(requestCallback: (timeStart: number,
 
 		// Append data after time range
 		if (timeEnd > state.timeLast.end) {
-			const req: T[] = await repeatAsync(requestCallback, 5)
+			const req: T[] = await repeatAsync(requestCallback, API_RETRIES)
 				(Math.max(state.timeLast.end + 1, timeStart), timeEnd).catch(e => {
 					release();
 					throw e;
@@ -112,8 +113,8 @@ export class TimeCache<T> {
 
 		// Append data before time range
 		if (timeStart < this.timeLast.start) {
-			const req: T[] = await repeatAsync(this.requestCallback, 5)(timeStart,
-				Math.min(timeEnd, this.timeLast.start - 1)).catch(e => {
+			const req: T[] = await repeatAsync(this.requestCallback, API_RETRIES)
+				(timeStart, Math.min(timeEnd, this.timeLast.start - 1)).catch(e => {
 					release();
 					throw e;
 				});
@@ -125,7 +126,7 @@ export class TimeCache<T> {
 
 		// Append data after time range
 		if (timeEnd > this.timeLast.end) {
-			const req: T[] = await repeatAsync(this.requestCallback, 5)
+			const req: T[] = await repeatAsync(this.requestCallback, API_RETRIES)
 				(Math.max(this.timeLast.end + 1, timeStart), timeEnd).catch(e => {
 					release();
 					throw e;

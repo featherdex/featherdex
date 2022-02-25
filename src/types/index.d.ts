@@ -144,6 +144,7 @@ declare type AssetTrade = {
 	time: UTCTimestamp,
 	txid: string,
 	block: number,
+	isMine: boolean,
 	status: string,
 	idBuy: number,
 	idSell: number,

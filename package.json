@@ -81,6 +81,8 @@
 		"react-table": "^7.7.0",
 		"simple-node-logger": "^21.8.12",
 		"split-string": "^6.1.0",
+		"sqlite": "^4.0.23",
+		"sqlite3": "^5.0.2",
 		"styled-components": "^5.3.3",
 		"tail": "^2.2.4",
 		"terminal-in-react": "^4.3.1",
