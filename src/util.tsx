@@ -23,7 +23,7 @@ import Platforms from './platforms';
 
 import {
 	APP_NAME, LAYOUT_NAME, CONF_NAME, SATOSHI, MAX_ACCEPT_FEE, ACCOUNT_LABEL,
-	TYPE_SELL_OFFER
+	TYPE_SELL_OFFER, API_RETRIES, API_RETRIES_LARGE
 } from './constants';
 import { defaultLayout, defaultRPCSettings, defaultSettings } from './defaults';
 import { createRawSend } from './raw';
@@ -495,13 +495,13 @@ export async function getPendingAccepts(client: typeof Client, propid?: number,
 	pendingTxs?: OmniTx[]) {
 	const API = api(client);
 
-	const pending = await
-		repeatAsync(API.getPendingAccepts, 3)(propid, pendingTxs).catch(_ => {
+	const pending = await repeatAsync(API.getPendingAccepts, API_RETRIES_LARGE)
+		(propid, pendingTxs).catch(_ => {
 			throw new Error("Could not get pending accepts on exchange");
 		});
 
 	return await Promise.all(pending.map(p =>
-		repeatAsync(API.getPayload, 5)(p.txid).then(s => {
+		repeatAsync(API.getPayload, API_RETRIES)(p.txid).then(s => {
 			const rawamt = new N(parseInt(s.payload.slice(16), 16));
 			return {
 				address: p.referenceaddress,
@@ -520,8 +520,8 @@ export async function getFillOrders(client: typeof Client, propid: number,
 	const API = api(client);
 
 	// Get orderbook sells
-	const sells: DexSell[] = await repeatAsync
-		(API.getExchangeSells, 3)().then(s =>
+	const sells: DexSell[] = await repeatAsync(API.getExchangeSells,
+		API_RETRIES_LARGE)().then(s =>
 			s.filter(v => parseInt(v.propertyid) === propid).sort((a, b) =>
 				parseFloat(a.unitprice) - parseFloat(b.unitprice)), _ => {
 					throw new Error
@@ -532,9 +532,11 @@ export async function getFillOrders(client: typeof Client, propid: number,
 	logger.debug("sells")
 	logger.debug(sells)
 
-	const pendingTxs = await repeatAsync(API.getPendingTxs, 5)().catch(_ => {
-		throw new Error("Could not get pending transactions for orderbook query");
-	});
+	const pendingTxs = await
+		repeatAsync(API.getPendingTxs, API_RETRIES)().catch(_ => {
+			throw new
+				Error("Could not get pending transactions for orderbook query");
+		});
 
 	// Get accepts that are sitting in the mempool so we don't interfere
 	const pendingAccepts = await
@@ -546,8 +548,8 @@ export async function getFillOrders(client: typeof Client, propid: number,
 	logger.debug(pendingAccepts)
 
 	// Get cancels that are sitting in the mempool as well
-	const pendingCancels = await
-		repeatAsync(API.getPendingCancels, 3)(propid, pendingTxs).then(cancels =>
+	const pendingCancels = await repeatAsync(API.getPendingCancels,
+		API_RETRIES_LARGE)(propid, pendingTxs).then(cancels =>
 			cancels.reduce((map, v) => map.set(v.sendingaddress, true),
 				new Map<string, boolean>()), _ => {
 					throw new Error("Could not get list of pending sell cancels");
@@ -618,7 +620,7 @@ export async function getAddressAssets(client: typeof Client, propid: number) {
 
 	// Get address asset balances, filter out pending sells, descending
 	const addressAssets = await
-		repeatAsync(API.getWalletAddressAssets, 3)().then(assets =>
+		repeatAsync(API.getWalletAddressAssets, API_RETRIES_LARGE)().then(assets =>
 			assets.flatMap(v => v.balances.map(w =>
 			({
 				address: v.address,
@@ -717,8 +719,9 @@ export async function fundAddress(client: typeof Client, amount: N,
 
 	let finalAddress = address;
 	if (finalAddress === undefined) {
-		const newAddress = await handlePromise(repeatAsync(API.getNewAddress, 3)
-			(ACCOUNT_LABEL), "Could not create new address for grouping");
+		const newAddress = await
+			handlePromise(repeatAsync(API.getNewAddress, API_RETRIES_LARGE)
+				(ACCOUNT_LABEL), "Could not create new address for grouping");
 		if (newAddress === null) return null;
 
 		logger.debug("newAddress")
@@ -728,9 +731,10 @@ export async function fundAddress(client: typeof Client, amount: N,
 	}
 
 	logger.debug("createRawTransaction")
-	const pretx = await handlePromise(repeatAsync(API.createRawTransaction, 3)
-		({ ins: [], outs: [{ [finalAddress]: amount }] }),
-		"Could not create pre-raw transaction for grouping");
+	const pretx = await
+		handlePromise(repeatAsync(API.createRawTransaction, API_RETRIES_LARGE)
+			({ ins: [], outs: [{ [finalAddress]: amount }] }),
+			"Could not create pre-raw transaction for grouping");
 	if (pretx === null) return null;
 
 	const rawtx = await fundTx(client, pretx, { changePosition: 1 },
@@ -755,8 +759,9 @@ export async function fundTx(client: typeof Client, rawtx: string,
 
 	let opts = { ...options };
 	if (opts.changeAddress === undefined) {
-		const address = await handlePromise(repeatAsync(API.getNewAddress, 5)
-			(ACCOUNT_LABEL), `${errmsg} (getnewaddress)`);
+		const address = await
+			handlePromise(repeatAsync(API.getNewAddress, API_RETRIES)(ACCOUNT_LABEL),
+				`${errmsg} (getnewaddress)`);
 		if (address === null) return null;
 
 		logger.debug(`fundtx new address ${address}`)
@@ -764,37 +769,45 @@ export async function fundTx(client: typeof Client, rawtx: string,
 		opts = { ...opts, changeAddress: address };
 	}
 
-	const promise =
-		repeatAsync(API.fundRawTransaction, 3)(rawtx, opts).then(v => v.hex);
+	const promise = repeatAsync(API.fundRawTransaction, API_RETRIES_LARGE)(rawtx,
+		opts).then(v => v.hex);
 	return errmsg === null ? promise : handlePromise(promise, errmsg);
 }
 
 export function signTx(client: typeof Client, rawtx: string,
 	errmsg = "Could not sign raw transaction") {
 	logger.debug(`signtx ${rawtx}`)
-	return handlePromise(repeatAsync(api(client).signRawTransaction, 3)(rawtx),
-		errmsg, v => v.hex);
+	return handlePromise(repeatAsync(api(client).signRawTransaction,
+		API_RETRIES_LARGE)(rawtx), errmsg, v => v.hex);
 }
 
 export function sendTx(client: typeof Client, rawtx: string,
 	errmsg = "Could not send raw transaction") {
 	logger.debug(`sendtx ${rawtx}`)
-	return handlePromise(repeatAsync(api(client).sendRawTransaction, 3)(rawtx),
-		errmsg);
+	return handlePromise(repeatAsync(api(client).sendRawTransaction,
+		API_RETRIES_LARGE)(rawtx), errmsg);
 }
 
 export function waitForTx(client: typeof Client, tx: string, status?: Cancellable) {
 	return new Promise((resolve, reject) => {
 		(async function waitFor(status) {
 			if (!!status && status.isCancel) return reject();
-			const isConfirm = await handlePromise(repeatAsync
-				(api(client).getTransaction, 5)(tx),
-				`Could not query tx ${tx}`,
-				v => v.confirmations && v.confirmations > 0);
+			const isConfirm = await
+				handlePromise(repeatAsync(api(client).getTransaction, API_RETRIES)
+					(tx), `Could not query tx ${tx}`, v =>
+					v.confirmations && v.confirmations > 0);
 			if (isConfirm) return resolve(true);
 			setTimeout(waitFor, 1000, status);
 		})(status);
 	});
+}
+
+export async function* commandBatch(client: typeof Client, commands: {
+	method: string,
+	parameters: any[]
+}[], batchSize: number) {
+	for (let i = 0; i < commands.length; i += batchSize)
+		yield await client.command(commands.slice(i, i + batchSize));
 }
 
 export function handlePromise<T>(p: Promise<T>, errmsg: string): Promise<T>;
@@ -871,7 +884,7 @@ export function notify(type: ReactNotificationOptions['type'],
 export async function constants(client: typeof Client) {
 	const API = api(client);
 
-	const info = await repeatAsync(API.getNetworkInfo, 5)();
+	const info = await repeatAsync(API.getNetworkInfo, API_RETRIES)();
 	const keys = [{ pattern: "/Feathercoin", key: "FEATHERCOIN" },
 	{ pattern: "/Litecoin", key: "LITECOIN" },
 	{ pattern: "/Bitcoin", key: "BITCOIN" }];
