@@ -52,7 +52,7 @@ module.exports = [{ // Electron entry
 	externals: {
 		'dtrace-provider': 'commonjs2 dtrace-provider',
 		'node-fetch': 'commonjs2 node-fetch',
-		'sqlite3':'commonjs sqlite3',
+		'better-sqlite3': 'commonjs2 better-sqlite3',
 	},
 	plugins: [new HtmlWebpackPlugin({
 		template: 'src/index.html',

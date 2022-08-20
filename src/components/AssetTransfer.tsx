@@ -497,7 +497,7 @@ const AssetReceive = () => {
 				</td>
 			</tr>
 			<tr>
-				<td>{consts.COIN_TICKER ?? "Coin"} balance:</td>
+				<td>{consts?.COIN_TICKER ?? "Coin"} balance:</td>
 				<td>
 					<input type="number" name="balance"
 						className="coin form-field" value={balance.toFixed(8)}

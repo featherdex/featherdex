@@ -180,7 +180,9 @@ class App extends React.PureComponent<AppProps, AppState> {
 			});
 			if (consts === null) return false;
 
-			this.tradesDB.init(consts).catch(e => handleError(e, "error"));
+			try {
+				this.tradesDB.init(consts);
+			} catch (e) { handleError(e, "error"); }
 
 			this.setState({ consts }, () => {
 				this.genAssetList();
@@ -237,7 +239,9 @@ class App extends React.PureComponent<AppProps, AppState> {
 
 		// Try starting the DB again...
 		if (!this.tradesDB.ready())
-			await this.tradesDB.init(consts).catch(e => handleError(e, "error"));
+			try {
+				this.tradesDB.init(consts);
+			} catch (e) { handleError(e, "error"); }
 
 		if (!this.tradesDB.ready()) return [];
 
@@ -466,7 +470,9 @@ class App extends React.PureComponent<AppProps, AppState> {
 				return null;
 			});
 
-			this.tradesDB.init(consts).catch(e => handleError(e, "error"));
+			try {
+				this.tradesDB.init(consts);
+			} catch (e) { handleError(e, "error"); }
 
 			if (consts !== null)
 				this.setState({ consts }, () => { this.genAssetList(); });

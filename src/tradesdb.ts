@@ -1,8 +1,6 @@
 import Client from 'bitcoin-core';
-import sqlite3 from 'sqlite3';
+import Database from 'better-sqlite3';
 import N from 'decimal.js';
-
-import { open } from 'sqlite';
 
 import api from './api';
 
@@ -27,7 +25,7 @@ type DBTrade = {
 export default class TradesDB {
 	bestBlock = -1;
 	path = ":memory:";
-	db: Awaited<ReturnType<typeof open>> = null;
+	db: Database.Database = null;
 	progressMsg: string = null;
 
 	cols: DBCol[] =
@@ -47,24 +45,23 @@ export default class TradesDB {
 
 	ready = () => this.db !== null && this.db !== undefined;
 
-	init = async (consts: PlatformConstants) => {
-		if (log().getLevel() === "debug") sqlite3.verbose();
+	init = (consts: PlatformConstants) => {
+		this.db = new Database(this.path,
+			{ verbose: log().getLevel() === "debug" ? log().debug : null });
 
-		this.db = await
-			open({ filename: this.path, driver: sqlite3.cached.Database });
+		this.db.prepare("CREATE TABLE IF NOT EXISTS Variables"
+			+ " (coin STRING PRIMARY_KEY, best_height INTEGER)").run();
+		this.db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_name"
+			+ " ON Variables (coin)").run();
 
-		await this.db.run("CREATE TABLE IF NOT EXISTS Variables"
-			+ " (coin STRING PRIMARY_KEY, best_height INTEGER)");
-		await this.db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_name"
-			+ " ON Variables (coin)")
-
-		await this.db.run(`CREATE TABLE IF NOT EXISTS ${consts.COIN_NAME}`
-			+ `(${this.cols.map(col => `${col.name} ${col.type}`).join(", ")})`);
-		await this.db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_txid"
-			+ ` ON ${consts.COIN_NAME} (txid)`);
+		this.db.prepare(`CREATE TABLE IF NOT EXISTS ${consts.COIN_NAME}`
+			+ `(${this.cols.map(col =>
+				`${col.name} ${col.type}`).join(", ")})`).run();
+		this.db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_txid"
+			+ ` ON ${consts.COIN_NAME} (txid)`).run();
 	}
 
-	finish = () => this.db.close();
+	finish = () => { this.db.close(); }
 
 	listAssetTrades = async (client: typeof Client, startblock: number,
 		endblock: number): Promise<AssetTrade[]> => {
@@ -153,9 +150,9 @@ export default class TradesDB {
 		if (startblock > endblock) throw new Error("start > end");
 		if (startblock < OMNI_START_HEIGHT) throw new Error("height out of range");
 
-		let bestHeight = await
-			this.db.get("SELECT best_height FROM Variables WHERE coin = ?",
-				COIN_NAME).then(v => v?.best_height);
+		let bestHeight: number =
+			this.db.prepare("SELECT best_height FROM Variables WHERE coin = ?")
+				.get(COIN_NAME)?.best_height;
 		if (!bestHeight) bestHeight = OMNI_START_HEIGHT;
 		const height = await repeatAsync(api(client).getBlockchainInfo, API_RETRIES)
 			().then(v => v.blocks);
@@ -194,10 +191,9 @@ export default class TradesDB {
 				notify("info", "Updating Trades Database", this.progressMsg);
 		}, 5000);
 
-		const cachedTrades = await this.db.all(`SELECT * FROM ${COIN_NAME}`
+		const cachedTrades = this.db.prepare(`SELECT * FROM ${COIN_NAME}`
 			+ ` WHERE block BETWEEN ${startblock} AND ${endblock}`
-			+ " ORDER BY unixtime ASC").then((trades: DBTrade[]) =>
-				trades.map(fromDBCols));
+			+ " ORDER BY unixtime ASC").all().map(fromDBCols);
 		const newTrades = await repeatAsync(this.listAssetTrades, API_RETRIES_LARGE)
 			(client, bestHeight, height).then(trades =>
 				trades.filter(trade => trade.block >= startblock
@@ -208,20 +204,14 @@ export default class TradesDB {
 		clearInterval(notifier);
 
 		// Update the DB (note: replaces conflicts)
-		const dbi = this.db.getDatabaseInstance();
-		dbi.serialize(() => {
-			dbi.run("BEGIN TRANSACTION");
-
-			newTrades.forEach(trade =>
-				dbi.run(`INSERT OR REPLACE INTO ${COIN_NAME} VALUES (`
-					+ Array(this.cols.length).fill("?").join(", ") + ")",
-					...Object.values(toDBCols(trade))));
-
-			dbi.run("INSERT OR REPLACE INTO Variables VALUES (?, ?)", COIN_NAME,
-				endblock);
-
-			dbi.run("COMMIT");
-		});
+		this.db.transaction((trades: AssetTrade[]) => {
+			trades.forEach(trade =>
+				this.db.prepare(`INSERT OR REPLACE INTO ${COIN_NAME} VALUES (`
+					+ Array(this.cols.length).fill("?").join(", ") + ")")
+					.run(...Object.values(toDBCols(trade))));
+			this.db.prepare("INSERT OR REPLACE INTO Variables VALUES (?, ?)")
+				.run(COIN_NAME, endblock);
+		})(newTrades);
 
 		// Coalesce the cached trades and fresh trades
 		const txidTradeEntry = (trade: AssetTrade): [string, AssetTrade] =>
