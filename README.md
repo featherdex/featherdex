@@ -48,6 +48,8 @@ To package the app, run `npm run build`, and then `npm run package`. The app sho
 
 To build deliverables for the app, run `npm run build`, and then `npm run make`. The built deliverables should be in `./out/make/[FORMAT]/[PLATFORM]/[ARCH]/`.
 
+NOTE: As of v0.9.0-beta, it is no longer possible to cross-build packages for other platforms. You can only build for your own platform now due to limitations from `better-sqlite3`. Use `make-win`, `make-mac`, `make-linux`.
+
 ## Bug Reports
 
 If you have a GitHub account, please post bugs and other concerns in the 'Issues' tab of this repository. Otherwise, please message @cmt118 on the Feathercoin Telegram at https://t.me/FeathercoinOfficial. Thank you.
